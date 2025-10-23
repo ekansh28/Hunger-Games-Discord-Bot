@@ -1,0 +1,148 @@
+{
+  "title": "The Bloodbath",
+  "subtitle": "As the tributes stand on their podiums, the horn sounds.",
+  "events": [
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} grabs a shovel."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} grabs a backpack and retreats."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} snatches a bottle of alcohol and a rag."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} finds a bow, some arrows, and a quiver."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} runs away with a lighter and some rope."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} snatches a pair of sais."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} grabs a sword."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} takes a handful of throwing knives."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} runs away from the Cornucopia."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} grabs a jar of fishing bait while {name2} gets fishing gear."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} throws a knife into {name2}'s head."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} throws a knife into {name2}'s chest."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} stabs {name2} with a tree branch."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} stabs {name2} in the back with a trident."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} breaks {name2}'s nose for a basket of bread."
+    },
+    {
+      "type": "team",
+      "fatality": true,
+      "killers": [0, 1],
+      "text": "{name} and {name2} work together to drown {name3}."
+    },
+    {
+      "type": "team",
+      "fatality": true,
+      "killers": [0, 1, 2],
+      "text": "{name}, {name2}, and {name3} work together to get as many supplies as possible."
+    },
+    {
+      "type": "team",
+      "fatality": false,
+      "text": "{name}, {name2}, {name3}, and {name4} share everything they gathered before running."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} clutches a first aid kit and runs away."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} gathers as much food as they can."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} stays at the cornucopia for resources."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} and {name2} fight for a bag. {name} gives up and retreats."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} and {name2} fight for a bag. {name2} gives up and retreats."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} grabs a shield leaning on the cornucopia."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} takes a spear from inside the cornucopia."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} retrieves a trident from inside the cornucopia."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} rips a mace out of {name2}'s hands."
+    }
+  ]
+}

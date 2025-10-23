@@ -1,0 +1,258 @@
+{
+  "title": "Day {number}",
+  "subtitle": "The sun rises on another day in the arena.",
+  "events": [
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} goes hunting."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} injures themselves."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} explores the arena."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} scavenges for food and water."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} sees smoke rising in the distance, but decides not to investigate."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} makes a wooden spear."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} discovers a cave."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} attacks {name2}, but they manage to escape."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} chases {name2}."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} runs away from {name2}."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} collects fruit from a tree."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} receives water from an unknown sponsor."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} receives medical supplies from an unknown sponsor."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} hunts for other tributes."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} and {name2} hunt for other tributes."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} and {name2} split up to cover more ground."
+    },
+    {
+      "type": "team",
+      "fatality": false,
+      "text": "{name}, {name2}, and {name3} hunt for other tributes."
+    },
+    {
+      "type": "team",
+      "fatality": false,
+      "text": "{name}, {name2}, and {name3} start hunting for other tributes."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} throws a knife into {name2}'s head."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} kills {name2} with their own weapon."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} overpowers {name2}, killing them."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} sets {name2} on fire with a molotov."
+    },
+    {
+      "type": "solo",
+      "fatality": true,
+      "text": "{name} accidentally detonates a land mine while trying to arm it."
+    },
+    {
+      "type": "solo",
+      "fatality": true,
+      "text": "{name} steps on a land mine."
+    },
+    {
+      "type": "solo",
+      "fatality": true,
+      "text": "{name} eats a nightlock berry."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} shoots an arrow into {name2}'s head."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} stabs {name2} while their back is turned."
+    },
+    {
+      "type": "team",
+      "fatality": true,
+      "killers": [0, 1],
+      "text": "{name} and {name2} work together to drown {name3}."
+    },
+    {
+      "type": "team",
+      "fatality": true,
+      "killers": [0, 1],
+      "text": "{name} and {name2} track down and kill {name3}."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} kills {name2} as they try to run."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} tries to sleep through the entire day."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} receives fresh food from an unknown sponsor."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} stalks {name2}."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": -1,
+      "text": "{name} attempts to climb a tree, but falls on {name2}, killing them both."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} and {name2} work together for the day."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} searches for a water source."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} begs for {name2} to kill them. {name2} refuses, keeping {name} alive."
+    },
+    {
+      "type": "team",
+      "fatality": true,
+      "killers": [1],
+      "text": "{name} attacks {name2}, but {name3} protects them, killing {name}."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} discovers a river."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} and {name2} split up to search for resources."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} questions their sanity."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} overhears {name2} talking in the distance."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} is pricked by thorns while picking berries."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} receives a hatchet from an unknown sponsor."
+    },
+    {
+      "type": "solo",
+      "fatality": true,
+      "text": "{name} dies from thirst."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} injures themselves."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} searches for firewood."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} pegs {name2} to death."
+    }
+  ]
+}

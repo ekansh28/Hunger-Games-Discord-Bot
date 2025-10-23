@@ -1,0 +1,126 @@
+{
+  "title": "The Feast",
+  "subtitle": "The Cornucopia is replenished with food, supplies, weapons, and memoirs from the tributes' families.",
+  "events": [
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} gathers as much food into a bag as they can before fleeing."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} sobs while gripping a photo of their family."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} and {name2} decide to work together to get more supplies."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} stuffs a bundle of dry clothing into a backpack before sprinting away."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} takes a staff leaning against the cornucopia."
+    },
+    {
+      "type": "solo",
+      "fatality": false,
+      "text": "{name} decides not to go to The Feast."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} and {name2} get into a fight over raw meat, but {name2} gives up and runs away."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} and {name2} get into a fight over raw meat, but {name} gives up and runs away."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} and {name2} agree to work together for the remainder of the games."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} severely injures {name2}, but puts them out of their misery."
+    },
+    {
+      "type": "duel",
+      "fatality": false,
+      "text": "{name} severely injures {name2} and leaves them to die."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} kills {name2} for their supplies."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} stabs {name2} in the back with a trident."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} shoots an arrow into {name2}'s head."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} snaps {name2}'s neck."
+    },
+    {
+      "type": "team",
+      "fatality": true,
+      "killers": [0, 1],
+      "text": "{name} and {name2} work together to drown {name3}."
+    },
+    {
+      "type": "team",
+      "fatality": true,
+      "killers": [0, 1],
+      "text": "{name} and {name2} track down and kill {name3}."
+    },
+    {
+      "type": "team",
+      "fatality": true,
+      "killers": [0, 1, 2],
+      "text": "{name}, {name2}, and {name3} confront each other, but {name3} runs away as {name} kills {name4}."
+    },
+    {
+      "type": "team",
+      "fatality": true,
+      "killers": [0, 1, 2],
+      "text": "{name}, {name2}, and {name3} start fighting, but {name2} runs away as {name} kills {name4}."
+    },
+    {
+      "type": "team",
+      "fatality": false,
+      "text": "{name}, {name2}, {name3}, and {name4} team up to grab food, supplies, weapons, and memoirs."
+    },
+    {
+      "type": "team",
+      "fatality": true,
+      "killers": [0],
+      "text": "{name} shoots an arrow at {name2}, but misses and kills {name3} instead."
+    },
+    {
+      "type": "duel",
+      "fatality": true,
+      "killer": 0,
+      "text": "{name} kills {name2} as they try to run."
+    }
+  ]
+}
