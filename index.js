@@ -1,5 +1,4 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, REST, Routes } = require('discord.js');
-const config = require('./config.json');
 const EventLogic = require('./utils/eventLogic');
 const ImageGenerator = require('./utils/imageGenerator');
 const { commandData, handleInteraction: handleBrInteraction } = require('./banRoulette');
