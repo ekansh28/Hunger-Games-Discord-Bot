@@ -1,8 +1,13 @@
+require('dotenv').config();
+
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, REST, Routes } = require('discord.js');
 const EventLogic = require('./utils/eventLogic');
 const ImageGenerator = require('./utils/imageGenerator');
 const { commandData, handleInteraction: handleBrInteraction } = require('./banRoulette');
-
+const config = {
+    token: process.env.DISCORD_TOKEN,
+    authorizedUserId: process.env.AUTHORIZED_USER_ID
+};
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
