@@ -1,4 +1,4 @@
-const { createCanvas, loadImage } = require('canvas');
+const { Canvas, loadImage } = require('skia-canvas');
 const https = require('https');
 const http = require('http');
 
@@ -25,7 +25,7 @@ class ImageGenerator {
 
     async generateEventImage(stageTitle, stageSubtitle, events) {
         const { width, height } = this.calculateCanvasSize(events.length);
-        const canvas = createCanvas(width, height);
+        const canvas = new Canvas(width, height);
         const ctx = canvas.getContext('2d');
 
         ctx.fillStyle = this.backgroundColor;
@@ -40,7 +40,7 @@ class ImageGenerator {
 
         await this.drawEvents(ctx, events, width, currentY);
 
-        return canvas.toBuffer('image/png');
+        return await canvas.toBuffer('png');
     }
 
     async drawTitle(ctx, title, width) {
@@ -263,7 +263,7 @@ class ImageGenerator {
         const width = 800;
         const height = titleHeight + padding + (rows * (avatarSize + 20)) + padding;
 
-        const canvas = createCanvas(width, height);
+        const canvas = new Canvas(width, height);
         const ctx = canvas.getContext('2d');
 
         ctx.fillStyle = this.backgroundColor;
@@ -323,7 +323,7 @@ class ImageGenerator {
             }
         }
 
-        return canvas.toBuffer('image/png');
+        return await canvas.toBuffer('png');
     }
 }
 

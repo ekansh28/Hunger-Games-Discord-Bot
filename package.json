@@ -16,8 +16,10 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "canvas": "^2.11.2",
-    "discord.js": "^14.14.1",
-    "node-fetch": "^3.3.2"
+    "canvas": "^3.2.3",
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2",
+    "node-fetch": "^3.3.2",
+    "skia-canvas": "^3.0.8"
   }
 }

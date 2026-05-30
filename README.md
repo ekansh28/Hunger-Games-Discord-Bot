@@ -39,9 +39,9 @@ A Discord bot that simulates Hunger Games events with dynamically generated imag
    ```
 
 3. **Configure the bot**
-   - Edit `config.json`
-   - Replace `"YOUR_BOT_TOKEN_HERE"` with your Discord bot token
-   - Update `authorizedUserId` to your Discord user ID
+   - Rename `.env.example` to `.env`
+   - Replace `YOUR_BOT_TOKEN_HERE` with your Discord bot token
+   - Update `AUTHORIZED_USER_ID` with your Discord user ID
 
 4. **Canvas Setup** (OS-specific)
 
@@ -104,12 +104,10 @@ hunger-games-bot/
 
 ## ⚙️ Configuration
 
-### config.json
-```json
-{
-  "token": "YOUR_DISCORD_BOT_TOKEN",
-  "authorizedUserId": "YOUR_DISCORD_USER_ID"
-}
+### .env
+```env
+DISCORD_TOKEN=YOUR_DISCORD_BOT_TOKEN
+AUTHORIZED_USER_ID=YOUR_DISCORD_USER_ID
 ```
 
 ### Bot Permissions Required

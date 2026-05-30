@@ -1,7 +1,8 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
-const config = require('./config.json');
+require('dotenv').config();
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, REST, Routes } = require('discord.js');
 const EventLogic = require('./utils/eventLogic');
 const ImageGenerator = require('./utils/imageGenerator');
+const { commandData, handleInteraction: handleBrInteraction } = require('./banRoulette');
 
 const client = new Client({
     intents: [
@@ -12,18 +13,16 @@ const client = new Client({
 });
 
 const gameStates = new Map();
-const authorizedUsers = new Set([config.authorizedUserId]);
+const authorizedUsers = new Set([process.env.AUTHORIZED_USER_ID]);
 const authorizedRoles = new Set();
 
 function isAuthorized(memberOrUser) {
     const userId = memberOrUser.id || memberOrUser.user?.id;
 
-    // Check if user is directly authorized
     if (authorizedUsers.has(userId)) {
         return true;
     }
 
-    // Check if user has authorized role
     if (memberOrUser.roles && memberOrUser.roles.cache) {
         return memberOrUser.roles.cache.some(role => authorizedRoles.has(role.id));
     }
@@ -31,14 +30,27 @@ function isAuthorized(memberOrUser) {
     return false;
 }
 
-client.once('clientReady', () => {
+client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
+
+    // Register the /br slash command
+    try {
+        const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+        // Registers to all guilds the bot is in; swap to per-guild if preferred
+        await rest.put(
+            Routes.applicationCommands(client.user.id),
+            { body: [commandData] }
+        );
+        console.log('Registered /br slash command.');
+    } catch (err) {
+        console.error('Failed to register /br slash command:', err);
+    }
 });
 
 client.on('messageCreate', async (message) => {
     if (message.content === '=play') {
         if (!isAuthorized(message.member || message.author)) {
-            return message.reply('❌ Only authorized users can start the game lobby.');
+            return message.reply('Only authorized users can start the game lobby.');
         }
 
         if (gameStates.has(message.channel.id)) {
@@ -54,7 +66,7 @@ client.on('messageCreate', async (message) => {
         });
 
         const embed = new EmbedBuilder()
-            .setTitle('🏹 Hunger Games Simulation Lobby')
+            .setTitle('Hunger Games Simulation Lobby')
             .setDescription('**Welcome to the arena!**\n\nClick the button below to join the deadly competition.\n\n**Participants:** 0/24')
             .setColor('#FFD700')
             .setTimestamp();
@@ -75,21 +87,18 @@ client.on('messageCreate', async (message) => {
         await message.reply({ embeds: [embed], components: [row] });
     }
 
-    // Admin command to add authorized users or roles
     if (message.content.startsWith('=addp ')) {
-        if (message.author.id !== config.authorizedUserId) {
-            return message.reply('❌ Only the main admin can authorize users or roles.');
+        if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
+            return message.reply('Only the main admin can authorize users or roles.');
         }
 
         const args = message.content.slice(6).trim();
         let targetUserId = null;
         let targetRoleId = null;
 
-        // Check if it's a role mention or ID
         if (args.startsWith('<@&') && args.endsWith('>')) {
             targetRoleId = args.slice(3, -1);
         } else if (/^\d{17,19}$/.test(args)) {
-            // Could be user ID or role ID, check if it's a role first
             const guild = message.guild;
             if (guild) {
                 const role = guild.roles.cache.get(args);
@@ -100,13 +109,11 @@ client.on('messageCreate', async (message) => {
                 }
             }
         } else if (args.startsWith('<@') && args.endsWith('>')) {
-            // User mention
             targetUserId = args.slice(2, -1);
             if (targetUserId.startsWith('!')) {
                 targetUserId = targetUserId.slice(1);
             }
         } else {
-            // Try to find user by username or role by name
             const guild = message.guild;
             if (guild) {
                 const role = guild.roles.cache.find(r => r.name.toLowerCase() === args.toLowerCase());
@@ -123,51 +130,46 @@ client.on('messageCreate', async (message) => {
 
         if (targetRoleId) {
             if (authorizedRoles.has(targetRoleId)) {
-                return message.reply('❌ Role is already authorized.');
+                return message.reply('Role is already authorized.');
             }
             authorizedRoles.add(targetRoleId);
             const guild = message.guild;
             const role = guild?.roles.cache.get(targetRoleId);
-            message.reply(`✅ Users with role **${role?.name || 'Unknown Role'}** can now host Hunger Games!`);
+            message.reply(`Users with role **${role?.name || 'Unknown Role'}** can now host Hunger Games!`);
         } else if (targetUserId) {
             if (authorizedUsers.has(targetUserId)) {
-                return message.reply('❌ User is already authorized.');
+                return message.reply('User is already authorized.');
             }
             authorizedUsers.add(targetUserId);
-            message.reply(`✅ <@${targetUserId}> can now host Hunger Games!`);
+            message.reply(`<@${targetUserId}> can now host Hunger Games!`);
         } else {
-            return message.reply('❌ User or role not found. Use @mention, @role, ID, username, or role name.');
+            return message.reply('User or role not found. Use @mention, @role, ID, username, or role name.');
         }
     }
 
-    // Admin command to remove authorized users or roles
     if (message.content.startsWith('=removep ')) {
-        if (message.author.id !== config.authorizedUserId) {
-            return message.reply('❌ Only the main admin can remove authorization.');
+        if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
+            return message.reply('Only the main admin can remove authorization.');
         }
 
         const args = message.content.slice(9).trim();
         let targetUserId = null;
         let targetRoleId = null;
 
-        // Check if it's a role mention or ID
         if (args.startsWith('<@&') && args.endsWith('>')) {
             targetRoleId = args.slice(3, -1);
         } else if (/^\d{17,19}$/.test(args)) {
-            // Could be user ID or role ID, check both
             if (authorizedRoles.has(args)) {
                 targetRoleId = args;
             } else if (authorizedUsers.has(args)) {
                 targetUserId = args;
             }
         } else if (args.startsWith('<@') && args.endsWith('>')) {
-            // User mention
             targetUserId = args.slice(2, -1);
             if (targetUserId.startsWith('!')) {
                 targetUserId = targetUserId.slice(1);
             }
         } else {
-            // Try to find user by username or role by name
             const guild = message.guild;
             if (guild) {
                 const role = guild.roles.cache.find(r => r.name.toLowerCase() === args.toLowerCase());
@@ -184,41 +186,39 @@ client.on('messageCreate', async (message) => {
 
         if (targetRoleId) {
             if (!authorizedRoles.has(targetRoleId)) {
-                return message.reply('❌ Role is not authorized.');
+                return message.reply('Role is not authorized.');
             }
             authorizedRoles.delete(targetRoleId);
             const guild = message.guild;
             const role = guild?.roles.cache.get(targetRoleId);
-            message.reply(`✅ Removed authorization from role **${role?.name || 'Unknown Role'}**.`);
+            message.reply(`Removed authorization from role **${role?.name || 'Unknown Role'}**.`);
         } else if (targetUserId) {
             if (targetUserId === config.authorizedUserId) {
-                return message.reply('❌ Cannot remove authorization from the main admin.');
+                return message.reply('Cannot remove authorization from the main admin.');
             }
             if (!authorizedUsers.has(targetUserId)) {
-                return message.reply('❌ User is not authorized.');
+                return message.reply('User is not authorized.');
             }
             authorizedUsers.delete(targetUserId);
-            message.reply(`✅ Removed authorization from <@${targetUserId}>.`);
+            message.reply(`Removed authorization from <@${targetUserId}>.`);
         } else {
-            return message.reply('❌ User or role not found in authorized list.');
+            return message.reply('User or role not found in authorized list.');
         }
     }
 
-    // Admin command to kill participants during game
     if (message.content.startsWith('=kill ')) {
-        if (message.author.id !== config.authorizedUserId) {
-            return message.reply('❌ Only the main admin can use this command.');
+        if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
+            return message.reply('Only the main admin can use this command.');
         }
 
         const gameState = gameStates.get(message.channel.id);
         if (!gameState || gameState.status !== 'running') {
-            return message.reply('❌ No active game in this channel.');
+            return message.reply('No active game in this channel.');
         }
 
         const args = message.content.slice(6).trim();
 
         if (args.toLowerCase() === 'all') {
-            // Kill everyone except the admin
             let killCount = 0;
             for (const [userId, userData] of gameState.participants.entries()) {
                 if (userData.alive && userId !== message.author.id) {
@@ -240,9 +240,8 @@ client.on('messageCreate', async (message) => {
             }
 
             if (killCount > 0) {
-                message.reply(`💀 Admin eliminated ${killCount} tributes! Only the admin survives.`);
+                message.reply(`Admin eliminated ${killCount} tributes! Only the admin survives.`);
 
-                // Generate fallen tributes image
                 setTimeout(async () => {
                     const imageGenerator = new ImageGenerator();
                     try {
@@ -255,11 +254,10 @@ client.on('messageCreate', async (message) => {
                         console.error('Error generating admin elimination image:', error);
                     }
 
-                    // Admin wins
                     setTimeout(async () => {
                         const adminUser = await client.users.fetch(message.author.id);
                         const winnerEmbed = new EmbedBuilder()
-                            .setTitle('🏆 ADMIN VICTORY')
+                            .setTitle('ADMIN VICTORY')
                             .setDescription(`**${adminUser.displayName || adminUser.username}** wins by admin override!\n\n*The odds were definitely in your favor.*`)
                             .setColor('#FFD700')
                             .setThumbnail(adminUser.displayAvatarURL())
@@ -270,15 +268,13 @@ client.on('messageCreate', async (message) => {
                     }, 6000);
                 }, 6000);
             } else {
-                message.reply('❌ No living tributes to eliminate.');
+                message.reply('No living tributes to eliminate.');
             }
             return;
         }
 
-        // Kill specific user
         let targetUserId = null;
 
-        // Parse user mention, ID, or username
         if (args.startsWith('<@') && args.endsWith('>')) {
             targetUserId = args.slice(2, -1);
             if (targetUserId.startsWith('!')) {
@@ -287,7 +283,6 @@ client.on('messageCreate', async (message) => {
         } else if (/^\d{17,19}$/.test(args)) {
             targetUserId = args;
         } else {
-            // Try to find user by username in participants
             for (const [userId, userData] of gameState.participants.entries()) {
                 if (userData.username.toLowerCase() === args.toLowerCase() ||
                     (userData.displayName && userData.displayName.toLowerCase() === args.toLowerCase())) {
@@ -298,15 +293,14 @@ client.on('messageCreate', async (message) => {
         }
 
         if (!targetUserId || !gameState.participants.has(targetUserId)) {
-            return message.reply('❌ User not found in current game.');
+            return message.reply('User not found in current game.');
         }
 
         const targetUser = gameState.participants.get(targetUserId);
         if (!targetUser.alive) {
-            return message.reply('❌ User is already dead.');
+            return message.reply('User is already dead.');
         }
 
-        // Kill the user
         targetUser.alive = false;
         if (!gameState.deadParticipants) {
             gameState.deadParticipants = new Map();
@@ -321,12 +315,10 @@ client.on('messageCreate', async (message) => {
             avatarURL: targetUser.avatarURL
         });
 
-        message.reply(`💀 Admin eliminated **${targetUser.displayName || targetUser.username}** from the game!`);
+        message.reply(`Admin eliminated **${targetUser.displayName || targetUser.username}** from the game!`);
 
-        // Check if game should end
         const aliveCount = gameState.gameLogic.getAliveCount();
         if (aliveCount <= 1) {
-            // Generate fallen tribute image and end game
             setTimeout(async () => {
                 const imageGenerator = new ImageGenerator();
                 try {
@@ -347,7 +339,7 @@ client.on('messageCreate', async (message) => {
                     const winner = gameState.gameLogic.getWinner();
                     const winnerDisplayName = winner.displayName || winner.username;
                     const winnerEmbed = new EmbedBuilder()
-                        .setTitle('🏆 VICTORY')
+                        .setTitle('VICTORY')
                         .setDescription(`**${winnerDisplayName}** has won the Hunger Games!\n\n*Congratulations, you have survived the arena!*`)
                         .setColor('#FFD700')
                         .setThumbnail(winner.avatarURL)
@@ -362,6 +354,16 @@ client.on('messageCreate', async (message) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
+    try {
+    // Route /br slash command and br_* buttons to the Ban Roulette module
+    if (
+        (interaction.isChatInputCommand() && interaction.commandName === 'br') ||
+        (interaction.isButton() && interaction.customId.startsWith('br_'))
+    ) {
+        return handleBrInteraction(interaction);
+    }
+
+    // Hunger Games button handling
     if (!interaction.isButton()) return;
 
     const gameState = gameStates.get(interaction.channel.id);
@@ -369,15 +371,15 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.customId === 'join_game') {
         if (gameState.status !== 'lobby') {
-            return interaction.reply({ content: '❌ The game has already started!', flags: 64 });
+            return interaction.reply({ content: 'The game has already started!', flags: 64 });
         }
 
         if (gameState.participants.has(interaction.user.id)) {
-            return interaction.reply({ content: '❌ You are already in the game!', flags: 64 });
+            return interaction.reply({ content: 'You are already in the game!', flags: 64 });
         }
 
         if (gameState.participants.size >= 24) {
-            return interaction.reply({ content: '❌ The game is full (24 participants maximum)!', flags: 64 });
+            return interaction.reply({ content: 'The game is full (24 participants maximum)!', flags: 64 });
         }
 
         gameState.participants.set(interaction.user.id, {
@@ -392,7 +394,7 @@ client.on('interactionCreate', async (interaction) => {
             .join('\n');
 
         const embed = new EmbedBuilder()
-            .setTitle('🏹 Hunger Games Simulation Lobby')
+            .setTitle('Hunger Games Simulation Lobby')
             .setDescription(`**Welcome to the arena!**\n\nClick the button below to join the deadly competition.\n\n**Participants:** ${gameState.participants.size}/24\n${participantList}`)
             .setColor('#FFD700')
             .setTimestamp();
@@ -411,23 +413,27 @@ client.on('interactionCreate', async (interaction) => {
                     .setDisabled(startDisabled)
             );
 
-        await interaction.update({ embeds: [embed], components: [row] });
+        try {
+            await interaction.update({ embeds: [embed], components: [row] });
+        } catch (err) {
+            if (err?.code !== 10062) console.error('join_game update error:', err);
+        }
     }
 
     if (interaction.customId === 'start_game') {
         if (!isAuthorized(interaction.member || interaction.user)) {
-            return interaction.reply({ content: '❌ Only authorized users can start the game!', flags: 64 });
+            return interaction.reply({ content: 'Only authorized users can start the game!', flags: 64 });
         }
 
         if (gameState.participants.size < 4) {
-            return interaction.reply({ content: '❌ At least 4 participants are needed to start the game!', flags: 64 });
+            return interaction.reply({ content: 'At least 4 participants are needed to start the game!', flags: 64 });
         }
 
         gameState.status = 'running';
         gameState.gameLogic = new EventLogic(gameState.participants);
 
         const embed = new EmbedBuilder()
-            .setTitle('🎮 Game Starting!')
+            .setTitle('Game Starting!')
             .setDescription('The Hunger Games simulation is about to begin...\n\n**May the odds be ever in your favor!**')
             .setColor('#FF4444')
             .setTimestamp();
@@ -446,11 +452,18 @@ client.on('interactionCreate', async (interaction) => {
                     .setDisabled(true)
             );
 
-        await interaction.update({ embeds: [embed], components: [disabledRow] });
+        try {
+            await interaction.update({ embeds: [embed], components: [disabledRow] });
+        } catch (err) {
+            if (err?.code !== 10062) console.error('start_game update error:', err);
+        }
 
         setTimeout(async () => {
             await startGameSimulation(interaction.channel, gameState);
         }, 3000);
+    }
+    } catch (err) {
+        if (err?.code !== 10062) console.error('[interactionCreate] error:', err);
     }
 });
 
@@ -519,7 +532,7 @@ async function startGameSimulation(channel, gameState) {
     const winner = gameLogic.getWinner();
     const winnerDisplayName = winner.displayName || winner.username;
     const winnerEmbed = new EmbedBuilder()
-        .setTitle('🏆 VICTORY')
+        .setTitle('VICTORY')
         .setDescription(`**${winnerDisplayName}** has won the Hunger Games!\n\n*Congratulations, you have survived the arena!*`)
         .setColor('#FFD700')
         .setThumbnail(winner.avatarURL)
@@ -529,4 +542,9 @@ async function startGameSimulation(channel, gameState) {
     gameStates.delete(channel.id);
 }
 
-client.login(config.token);
+// Prevent unhandled Discord API errors from crashing the process
+client.on('error', (err) => {
+    if (err?.code !== 10062) console.error('[Discord client error]', err);
+});
+
+client.login(process.env.DISCORD_TOKEN);

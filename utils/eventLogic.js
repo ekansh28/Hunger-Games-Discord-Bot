@@ -116,13 +116,22 @@ class EventLogic {
     }
 
     getRequiredParticipantCount(event) {
-        if (event.type === 'solo') return 1;
-        if (event.type === 'duel') return 2;
-        if (event.type === 'team') {
-            const nameMatches = event.text.match(/\{name\d*\}/g);
-            return nameMatches ? nameMatches.length : 3;
-        }
-        return 1;
+        const nameMatches = event.text.match(/\{name\d*\}/g);
+        if (!nameMatches) return 1;
+
+        const indices = nameMatches.map(m => {
+            if (m === '{name}') return 1;
+            const match = m.match(/\{name(\d+)\}/);
+            return match ? parseInt(match[1]) : 1;
+        });
+
+        const maxIndex = Math.max(...indices);
+        
+        // Ensure we at least respect the type defaults if they are higher
+        if (event.type === 'duel') return Math.max(maxIndex, 2);
+        if (event.type === 'team') return Math.max(maxIndex, 3);
+        
+        return maxIndex;
     }
 
     processEvent(event, participants) {
