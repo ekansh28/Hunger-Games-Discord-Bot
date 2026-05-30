@@ -24,7 +24,7 @@ const CROSS_WIDTH   = 28;          // px — elimination X stroke width
 const TIMEOUT_MS    = 5 * 60 * 1000;   // 5-minute ban penalty
 
 // ── Admin ─────────────────────────────────────────────────────
-const BR_ADMIN_ID = process.env.AUTHORIZED_USER_ID;
+const BR_ADMIN_ID = '1198980443823947927';
 
 // ── Session store  (channel.id → session) ───────────────────
 const sessions = new Map();
@@ -95,7 +95,7 @@ const LAYOUTS = {
     }()),
 };
 
-// ── Slash command definition ─────────────────────────────────
+// ── Slash command definitions ────────────────────────────────
 const banRouletteCommand = new SlashCommandBuilder()
     .setName('br')
     .setDescription('Start a Ban Roulette session in this channel.')
@@ -111,6 +111,111 @@ const banRouletteCommand = new SlashCommandBuilder()
             .setMinValue(2)
             .setMaxValue(20)
             .setRequired(false));
+
+const brCancelCommand = new SlashCommandBuilder()
+    .setName('brcancel')
+    .setDescription('Cancel the active Ban Roulette session in this channel.');
+
+// ── Timer helpers ────────────────────────────────────────────
+
+// Clear the lobby expiry timer
+function clearLobbyTimer(session) {
+    if (session.lobbyTimer) { clearTimeout(session.lobbyTimer); session.lobbyTimer = null; }
+}
+
+// Clear the active-turn countdown timer
+function clearTurnTimer(session) {
+    if (session.turnTimer) { clearTimeout(session.turnTimer); session.turnTimer = null; }
+}
+
+// Tear down a session: clear timers, disable the message buttons, remove from map
+async function closeSession(session, reason) {
+    clearLobbyTimer(session);
+    clearTurnTimer(session);
+    sessions.delete(session.channelId);
+    session.status = 'done';
+
+    try {
+        if (session.message) {
+            const deadRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('br_noop')
+                    .setLabel('Cancelled')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setDisabled(true)
+            );
+            await session.message.edit({ content: reason, components: [deadRow], files: [] });
+        }
+    } catch { /* message may already be deleted */ }
+}
+
+// Apply 5-min timeout, return a note string on failure
+async function applyTimeout(guild, userId) {
+    try {
+        const member = await guild.members.fetch(userId);
+        if (!guild.members.me.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+            return ' (missing Moderate Members permission)';
+        }
+        if (guild.members.me.roles.highest.comparePositionTo(member.roles.highest) <= 0) {
+            return ' (could not apply timeout — role too high)';
+        }
+        await member.timeout(TIMEOUT_MS, 'Ban Roulette elimination penalty');
+        return '';
+    } catch (err) {
+        if (err.code === 50013) return ' (timeout forbidden)';
+        console.error('[BanRoulette] Timeout error:', err);
+        return '';
+    }
+}
+
+// Start the 10-second turn countdown; auto-eliminate if it fires
+function startTurnTimer(session, channel) {
+    clearTurnTimer(session);
+    session.turnTimer = setTimeout(async () => {
+        // Confirm session still active and it's the same player's turn
+        if (!sessions.has(session.channelId) || session.status !== 'playing') return;
+
+        const activePlayer = session.players[session.turnIndex];
+        activePlayer.eliminated = true;
+
+        const timeoutNote = await applyTimeout(channel.guild, activePlayer.userId);
+
+        const alivePlayers = session.players.filter(p => !p.eliminated);
+
+        if (alivePlayers.length <= 1) {
+            session.status = 'done';
+            await refreshMessage(session,
+                `**Time's up!** <@${activePlayer.userId}> took too long and has been eliminated.${timeoutNote}`
+            );
+            const winner = alivePlayers[0];
+            if (winner) {
+                await channel.send(`<@${winner.userId}> is the last one standing — **you win!**`);
+            } else {
+                await channel.send('Everyone is eliminated. No survivors.');
+            }
+            sessions.delete(session.channelId);
+            return;
+        }
+
+        // Advance turn
+        let next = (session.turnIndex + 1) % session.players.length;
+        let safety = 0;
+        while (session.players[next].eliminated && safety < session.players.length) {
+            next = (next + 1) % session.players.length;
+            safety++;
+        }
+        session.turnIndex = next;
+        const firstAliveIndex = session.players.findIndex(p => !p.eliminated);
+        if (session.turnIndex === firstAliveIndex) session.roundNumber++;
+
+        const nextPlayer = session.players[session.turnIndex];
+        await refreshMessage(session,
+            `**Time's up!** <@${activePlayer.userId}> took too long and has been eliminated.${timeoutNote} — <@${nextPlayer.userId}>, you're next.`
+        );
+        // Restart timer for next player
+        startTurnTimer(session, channel);
+    }, 10_000);
+}
 
 // ── Utility: draw canvas and return PNG buffer ────────────────
 async function renderCanvas(session) {
@@ -339,6 +444,12 @@ async function handleBrCommand(interaction) {
 
     const reply = await interaction.editReply({ content: '', embeds: [], components: [row], files: [attachment] });
     session.message = reply;
+
+    // Auto-close lobby after 60 seconds if not enough players joined
+    session.lobbyTimer = setTimeout(async () => {
+        if (!sessions.has(channelId) || session.status !== 'lobby') return;
+        await closeSession(session, 'Lobby closed — not enough players joined in time.');
+    }, 60_000);
 }
 
 // ── Button: br_join ───────────────────────────────────────────
@@ -400,8 +511,10 @@ async function handleJoin(interaction) {
         }
 
         if (session.status === 'playing') {
+            clearLobbyTimer(session);
             const activePlayer = session.players[session.turnIndex];
             await refreshMessage(session, `**Ban Roulette begins!** <@${activePlayer.userId}> goes first.`);
+            startTurnTimer(session, interaction.channel);
         } else {
             await refreshMessage(session);
         }
@@ -434,6 +547,9 @@ async function handleTrigger(interaction) {
         return;
     }
 
+    // Player acted — cancel the countdown
+    clearTurnTimer(session);
+
     // ── Roll the chamber ─────────────────────────────────────
     const bang = Math.random() < (1 / session.chamberSize);
 
@@ -454,32 +570,14 @@ async function handleTrigger(interaction) {
         await refreshMessage(session,
             `*Click.* <@${activePlayer.userId}> survived. — <@${nextPlayer.userId}>, you're next.`
         );
+        startTurnTimer(session, interaction.channel);
 
     } else {
         // ── BANG: eliminate ──────────────────────────────────
         activePlayer.eliminated = true;
 
-        // Apply 5-minute timeout (silent on success, brief note on failure)
-        let timeoutNote = '';
-        try {
-            const member = interaction.member ?? await interaction.guild.members.fetch(activePlayer.userId);
-            if (member && interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
-                const botMember = interaction.guild.members.me;
-                if (botMember.roles.highest.comparePositionTo(member.roles.highest) > 0) {
-                    await member.timeout(TIMEOUT_MS, 'Ban Roulette elimination penalty');
-                } else {
-                    timeoutNote = ' (could not apply timeout — role too high)';
-                }
-            } else {
-                timeoutNote = ' (missing Moderate Members permission)';
-            }
-        } catch (err) {
-            if (err.code === 50013) {
-                timeoutNote = ' (timeout forbidden)';
-            } else {
-                console.error('[BanRoulette] Timeout error:', err);
-            }
-        }
+        // Apply 5-minute timeout
+        const timeoutNote = await applyTimeout(interaction.guild, activePlayer.userId);
 
         // ── Check win condition ──────────────────────────────
         const alivePlayers = session.players.filter(p => !p.eliminated);
@@ -522,14 +620,31 @@ async function handleTrigger(interaction) {
         await refreshMessage(session,
             `**BANG!** <@${activePlayer.userId}> has been eliminated.${timeoutNote} — <@${nextPlayer.userId}>, you're next.`
         );
+        startTurnTimer(session, interaction.channel);
     }
+}
+
+// ── /brcancel command handler ────────────────────────────────
+async function handleBrCancel(interaction) {
+    if (interaction.user.id !== BR_ADMIN_ID) {
+        return interaction.reply({ content: '​', flags: 64 });
+    }
+
+    const session = sessions.get(interaction.channel.id);
+    if (!session) {
+        return interaction.reply({ content: 'No active Ban Roulette session in this channel.', flags: 64 });
+    }
+
+    await interaction.reply({ content: 'Session cancelled.', flags: 64 });
+    await closeSession(session, 'Session was cancelled by the admin.');
 }
 
 // ── Master interaction router ─────────────────────────────────
 async function handleInteraction(interaction) {
     try {
-        if (interaction.isChatInputCommand() && interaction.commandName === 'br') {
-            return await handleBrCommand(interaction);
+        if (interaction.isChatInputCommand()) {
+            if (interaction.commandName === 'br')       return await handleBrCommand(interaction);
+            if (interaction.commandName === 'brcancel') return await handleBrCancel(interaction);
         }
 
         if (interaction.isButton()) {
@@ -545,8 +660,8 @@ async function handleInteraction(interaction) {
 
 // ── Exports ───────────────────────────────────────────────────
 module.exports = {
-    /** The SlashCommandBuilder data — pass to REST deployer */
-    commandData: banRouletteCommand.toJSON(),
+    /** Array of SlashCommandBuilder data — pass both to REST deployer */
+    commandData: [banRouletteCommand.toJSON(), brCancelCommand.toJSON()],
 
     /** Wire this into your client.on('interactionCreate', …) handler */
     handleInteraction,

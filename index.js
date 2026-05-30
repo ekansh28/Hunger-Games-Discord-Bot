@@ -1,5 +1,5 @@
-require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, REST, Routes } = require('discord.js');
+const config = require('./config.json');
 const EventLogic = require('./utils/eventLogic');
 const ImageGenerator = require('./utils/imageGenerator');
 const { commandData, handleInteraction: handleBrInteraction } = require('./banRoulette');
@@ -13,7 +13,7 @@ const client = new Client({
 });
 
 const gameStates = new Map();
-const authorizedUsers = new Set([process.env.AUTHORIZED_USER_ID]);
+const authorizedUsers = new Set([config.authorizedUserId]);
 const authorizedRoles = new Set();
 
 function isAuthorized(memberOrUser) {
@@ -35,13 +35,13 @@ client.once('clientReady', async () => {
 
     // Register the /br slash command
     try {
-        const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+        const rest = new REST({ version: '10' }).setToken(config.token);
         // Registers to all guilds the bot is in; swap to per-guild if preferred
         await rest.put(
             Routes.applicationCommands(client.user.id),
-            { body: [commandData] }
+            { body: commandData }   // commandData is already an array
         );
-        console.log('Registered /br slash command.');
+        console.log('Registered /br and /brcancel slash commands.');
     } catch (err) {
         console.error('Failed to register /br slash command:', err);
     }
@@ -88,7 +88,7 @@ client.on('messageCreate', async (message) => {
     }
 
     if (message.content.startsWith('=addp ')) {
-        if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
+        if (message.author.id !== config.authorizedUserId) {
             return message.reply('Only the main admin can authorize users or roles.');
         }
 
@@ -148,7 +148,7 @@ client.on('messageCreate', async (message) => {
     }
 
     if (message.content.startsWith('=removep ')) {
-        if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
+        if (message.author.id !== config.authorizedUserId) {
             return message.reply('Only the main admin can remove authorization.');
         }
 
@@ -207,7 +207,7 @@ client.on('messageCreate', async (message) => {
     }
 
     if (message.content.startsWith('=kill ')) {
-        if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
+        if (message.author.id !== config.authorizedUserId) {
             return message.reply('Only the main admin can use this command.');
         }
 
@@ -357,7 +357,7 @@ client.on('interactionCreate', async (interaction) => {
     try {
     // Route /br slash command and br_* buttons to the Ban Roulette module
     if (
-        (interaction.isChatInputCommand() && interaction.commandName === 'br') ||
+        (interaction.isChatInputCommand() && (interaction.commandName === 'br' || interaction.commandName === 'brcancel')) ||
         (interaction.isButton() && interaction.customId.startsWith('br_'))
     ) {
         return handleBrInteraction(interaction);
@@ -547,4 +547,4 @@ client.on('error', (err) => {
     if (err?.code !== 10062) console.error('[Discord client error]', err);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(config.token);
