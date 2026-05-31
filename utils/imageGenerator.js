@@ -23,7 +23,7 @@ class ImageGenerator {
     async generateEventImage(stageTitle, stageSubtitle, events) {
         try {
             const { width, height } = this.calculateCanvasSize(events.length);
-            const canvas = createCanvas(width, height);
+            const canvas = new Canvas(width, height);
             const ctx = canvas.getContext('2d');
 
             ctx.fillStyle = this.backgroundColor;
@@ -38,7 +38,13 @@ class ImageGenerator {
 
             await this.drawEvents(ctx, events, width, currentY);
             console.log("Events:", events.map(e => e.text));
-            return canvas.toBuffer('png');
+            const buffer = canvas.toBuffer('image/png');
+
+            console.log('BUFFER:', buffer);
+            console.log('IS BUFFER:', Buffer.isBuffer(buffer));
+            console.log('BUFFER LENGTH:', buffer?.length);
+
+            return buffer;
         } catch (err) {
             console.error('Canvas generation failed:', err);
             // Return a simple error image so AttachmentBuilder never gets undefined
@@ -269,7 +275,8 @@ class ImageGenerator {
             if (currentCol >= avatarsPerRow) { currentCol = 0; currentRow++; }
         }
 
-        return canvas.toBuffer('png');
+        const buffer = canvas.toBuffer('png');
+
     }
 }
 

@@ -42,38 +42,20 @@ client.once('clientReady', async () => {
 
 
 client.on('messageCreate', async (message) => {
-        if (message.content === '=test') {
-        if (!isAuthorized(message.member || message.author)) {
-            return message.reply('Only authorized users can test image generation.');
-        }
-        // Create sample events
-        const sampleEvents = [
-            {
-                text: 'John finds a sword and prepares for battle.',
-                participants: [{ displayName: 'John', username: 'john', avatarURL: message.author.displayAvatarURL({ extension: 'png', size: 128 }) }]
-            },
-            {
-                text: 'Jane and Mike fight over a backpack. Jane wins and runs away.',
-                participants: [
-                    { displayName: 'Jane', username: 'jane', avatarURL: message.author.displayAvatarURL({ extension: 'png', size: 128 }) },
-                    { displayName: 'Mike', username: 'mike', avatarURL: message.author.displayAvatarURL({ extension: 'png', size: 128 }) }
-                ]
-            },
-            {
-                text: 'A mysterious voice echoes: "May the odds be ever in your favor."',
-                participants: []
+            if (message.content === '=test') {
+                const buffer = Buffer.from('Hello World');
+
+                await message.reply({
+                    files: [
+                        {
+                            attachment: buffer,
+                            name: 'test.txt'
+                        }
+                    ]
+                });
+
+                return;
             }
-        ];
-        const ig = new ImageGenerator();
-        try {
-            const buffer = await ig.generateEventImage('🏹 Test Image Generation', 'This is a sample subtitle — text should now be visible', sampleEvents);
-            await message.reply({ files: [new AttachmentBuilder(buffer, { name: 'image-test.png' })] });
-        } catch (err) {
-            console.error('Test image failed:', err);
-            await message.reply('❌ Image generation failed. Check the console for errors.');
-        }
-        return;
-    }
     if (message.content === '=play') {
         if (!isAuthorized(message.member || message.author)) {
             return message.reply('Only authorized users can start the game lobby.');
