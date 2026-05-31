@@ -21,28 +21,42 @@ class ImageGenerator {
     }
 
     async generateEventImage(stageTitle, stageSubtitle, events) {
-        const { width, height } = this.calculateCanvasSize(events.length);
-        const canvas = createCanvas(width, height);
-        const ctx = canvas.getContext('2d');
+        try {
+            const { width, height } = this.calculateCanvasSize(events.length);
+            const canvas = createCanvas(width, height);
+            const ctx = canvas.getContext('2d');
 
-        ctx.fillStyle = this.backgroundColor;
-        ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = this.backgroundColor;
+            ctx.fillRect(0, 0, width, height);
 
-        const titleHeight = await this.drawTitle(ctx, stageTitle, width);
-        let currentY = titleHeight;
+            const titleHeight = await this.drawTitle(ctx, stageTitle, width);
+            let currentY = titleHeight;
 
-        if (stageSubtitle) {
-            currentY = await this.drawSubtitle(ctx, stageSubtitle, width, currentY);
+            if (stageSubtitle) {
+                currentY = await this.drawSubtitle(ctx, stageSubtitle, width, currentY);
+            }
+
+            await this.drawEvents(ctx, events, width, currentY);
+            console.log("Events:", events.map(e => e.text));
+            return await canvas.toBuffer('png');
+        } catch (err) {
+            console.error('Canvas generation failed:', err);
+            // Fallback error image so Discord doesn't crash
+            const errorCanvas = createCanvas(800, 200);
+            const ctx = errorCanvas.getContext('2d');
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, 800, 200);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '20px "Arial", "Helvetica", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('⚠️ Failed to generate event image ⚠️', 400, 100);
+            return errorCanvas.toBuffer('png');
         }
-
-        await this.drawEvents(ctx, events, width, currentY);
-        console.log("Events:", events.map(e => e.text));
-        return await canvas.toBuffer('png');
     }
 
     async drawTitle(ctx, title, width) {
         ctx.fillStyle = this.titleColor;
-        ctx.font = 'bold 36px sans-serif';
+        ctx.font = 'bold 36px "Arial", "Helvetica", "Noto Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -57,7 +71,7 @@ class ImageGenerator {
 
     async drawSubtitle(ctx, subtitle, width, startY) {
         ctx.fillStyle = this.subtitleColor;
-        ctx.font = '20px sans-serif';
+        ctx.font = '20px "Arial", "Helvetica", "Noto Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -107,7 +121,7 @@ class ImageGenerator {
                     ctx.fillStyle = '#666666';
                     ctx.fillRect(currentX, startY, avatarSize, avatarSize);
                     ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '12px sans-serif';
+                    ctx.font = '12px "Arial", "Helvetica", sans-serif';
                     ctx.textAlign = 'center';
                     const dn = participant.displayName || participant.username;
                     ctx.fillText(dn.substring(0, 2).toUpperCase(), currentX + avatarSize/2, startY + avatarSize/2 + 4);
@@ -116,7 +130,7 @@ class ImageGenerator {
             }
         }
 
-        ctx.font = '16px sans-serif';
+        ctx.font = '16px "Arial", "Helvetica", "Noto Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         const eventLines = this.wrapText(ctx, event.text, width - 40);
@@ -177,12 +191,14 @@ class ImageGenerator {
     }
 
     wrapText(ctx, text, maxWidth) {
+        if (!text) return [];
         const words = text.split(' ');
         const lines = [];
         let currentLine = '';
         for (const word of words) {
             const testLine = currentLine + (currentLine ? ' ' : '') + word;
-            if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+            const width = ctx.measureText(testLine).width;
+            if (width > maxWidth && currentLine) {
                 lines.push(currentLine);
                 currentLine = word;
             } else {
@@ -190,7 +206,7 @@ class ImageGenerator {
             }
         }
         if (currentLine) lines.push(currentLine);
-        return lines;
+        return lines.length ? lines : [text];
     }
 
     async generateFallenTributesImage(fallenTributes) {
@@ -211,7 +227,7 @@ class ImageGenerator {
         ctx.fillRect(0, 0, width, height);
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 32px sans-serif';
+        ctx.font = 'bold 32px "Arial", "Helvetica", "Noto Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillText('Fallen Tributes', width / 2, 30);
@@ -243,7 +259,7 @@ class ImageGenerator {
                 ctx.fillStyle = '#333333';
                 ctx.fillRect(x, y, avatarSize, avatarSize);
                 ctx.fillStyle = '#666666';
-                ctx.font = '14px sans-serif';
+                ctx.font = '14px "Arial", "Helvetica", sans-serif';
                 ctx.textAlign = 'center';
                 const dn = tribute.displayName || tribute.username;
                 ctx.fillText(dn.substring(0, 2).toUpperCase(), x + avatarSize/2, y + avatarSize/2 + 4);
