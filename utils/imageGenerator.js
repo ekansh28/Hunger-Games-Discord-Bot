@@ -1,4 +1,4 @@
-const { Canvas, loadImage } = require('canvas');
+const { createCanvas, loadImage } = require('canvas');
 
 class ImageGenerator {
     constructor() {
@@ -22,7 +22,7 @@ class ImageGenerator {
 
     async generateEventImage(stageTitle, stageSubtitle, events) {
         const { width, height } = this.calculateCanvasSize(events.length);
-        const canvas = new Canvas(width, height);
+        const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
 
         ctx.fillStyle = this.backgroundColor;
@@ -204,7 +204,7 @@ class ImageGenerator {
         const width = 800;
         const height = titleHeight + padding + (rows * (avatarSize + 20)) + padding;
 
-        const canvas = new Canvas(width, height);
+        const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
 
         ctx.fillStyle = this.backgroundColor;
