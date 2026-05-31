@@ -112,6 +112,9 @@ const banRouletteCommand = new SlashCommandBuilder()
             .setMaxValue(20)
             .setRequired(false));
 
+const brCancelCommand = new SlashCommandBuilder()
+.setName('brcancel')
+.setDescription('Cancel the active Ban Roulette session in this channel.');
 // ── Utility: draw canvas and return PNG buffer ────────────────
 async function renderCanvas(session) {
     const size = CANVAS_SIZE;
@@ -330,6 +333,19 @@ async function handleBrCommand(interaction) {
     session.message = reply.resource.message;
 }
 
+async function handleBrCancel(interaction) {
+    if (interaction.user.id !== BR_ADMIN_ID) {
+        return interaction.reply({ content: 'Only the BR admin can cancel a session.', flags: 64 });
+    }
+    const channelId = interaction.channel.id;
+    const session = sessions.get(channelId);
+    if (!session) {
+        return interaction.reply({ content: 'No active session in this channel.', flags: 64 });
+    }
+    sessions.delete(channelId);
+    if (session.message) await session.message.delete().catch(() => {});
+    await interaction.reply('Ban Roulette session cancelled.');
+}
 // ── Button: br_join ───────────────────────────────────────────
 async function handleJoin(interaction) {
     const channelId = interaction.channel.id;
@@ -518,6 +534,9 @@ async function handleInteraction(interaction) {
         if (interaction.isChatInputCommand() && interaction.commandName === 'br') {
             return await handleBrCommand(interaction);
         }
+        if (interaction.isChatInputCommand() && interaction.commandName === 'brcancel') {
+            return await handleBrCancel(interaction);
+        }
 
         if (interaction.isButton()) {
             if (interaction.customId === 'br_join')    return await handleJoin(interaction);
@@ -538,10 +557,7 @@ async function handleInteraction(interaction) {
 
 // ── Exports ───────────────────────────────────────────────────
 module.exports = {
-    /** The SlashCommandBuilder data — pass to REST deployer */
-    commandData: banRouletteCommand.toJSON(),
-
-    /** Wire this into your client.on('interactionCreate', …) handler */
+    commandData: [banRouletteCommand.toJSON(), brCancelCommand.toJSON()],
     handleInteraction,
 };
 
