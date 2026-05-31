@@ -2,7 +2,7 @@
 nixPkgs = [
   "cairo", "pango", "libpng", "libjpeg", "giflib", "librsvg",
   "pkg-config", "python3", "nodePackages.node-gyp",
-  "fontconfig", "dejavu_fonts", "liberation_fonts", "noto_fonts"
+  "fontconfig", "dejavu_fonts", "noto_fonts"
 ]
 
 [phases.build]
