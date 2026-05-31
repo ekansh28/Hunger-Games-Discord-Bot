@@ -1,11 +1,18 @@
 const { Canvas, loadImage, FontLibrary } = require('skia-canvas');
 const path = require('path');
 
-// Register bundled font so text renders on Railway/Linux
+// Register bundled font — skia-canvas reads the family name from the file itself
+let FONT_FAMILY = 'sans-serif';
 try {
-    FontLibrary.use('Inter', [path.join(__dirname, '..', 'fonts', 'Inter.ttf')]);
+    const fontPath = path.join(__dirname, '..', 'fonts', 'Inter.ttf');
+    const families = FontLibrary.use(fontPath);
+    // families is an array of registered family name strings
+    if (families && families.length > 0) {
+        FONT_FAMILY = Array.isArray(families[0]) ? families[0][0] : families[0];
+    }
+    console.log('[ImageGenerator] Registered font family:', FONT_FAMILY);
 } catch (e) {
-    console.warn('[ImageGenerator] Could not register font:', e.message);
+    console.warn('[ImageGenerator] Could not register font, falling back to sans-serif:', e.message);
 }
 
 class ImageGenerator {
@@ -51,7 +58,7 @@ class ImageGenerator {
 
     async drawTitle(ctx, title, width) {
         ctx.fillStyle = this.titleColor;
-        ctx.font = 'bold 36px Inter';
+        ctx.font = `bold 36px ${FONT_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -68,7 +75,7 @@ class ImageGenerator {
 
     async drawSubtitle(ctx, subtitle, width, startY) {
         ctx.fillStyle = this.subtitleColor;
-        ctx.font = '20px Inter';
+        ctx.font = `20px ${FONT_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -130,7 +137,7 @@ class ImageGenerator {
                     ctx.fillRect(currentX, startY, avatarSize, avatarSize);
 
                     ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '12px Inter';
+                    ctx.font = `12px ${FONT_FAMILY}`;
                     ctx.textAlign = 'center';
                     const displayName = participant.displayName || participant.username;
                     ctx.fillText(displayName.substring(0, 2).toUpperCase(),
@@ -147,7 +154,7 @@ class ImageGenerator {
         let lineY = textY;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.font = '16px Inter';
+        ctx.font = `16px ${FONT_FAMILY}`;
 
         for (const line of eventLines) {
             this.drawColoredEventText(ctx, line, width / 2, lineY, event.participants);
@@ -265,7 +272,7 @@ class ImageGenerator {
         ctx.fillRect(0, 0, width, height);
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 32px Inter';
+        ctx.font = `bold 32px ${FONT_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillText('Fallen Tributes', width / 2, 30);
@@ -304,7 +311,7 @@ class ImageGenerator {
                 ctx.fillRect(x, y, avatarSize, avatarSize);
 
                 ctx.fillStyle = '#666666';
-                ctx.font = '14px Inter';
+                ctx.font = `14px ${FONT_FAMILY}`;
                 ctx.textAlign = 'center';
                 const displayName = tribute.displayName || tribute.username;
                 ctx.fillText(displayName.substring(0, 2).toUpperCase(),

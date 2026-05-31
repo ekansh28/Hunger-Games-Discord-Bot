@@ -1,554 +1,325 @@
-require('dotenv').config();
+const { Canvas, loadImage, FontLibrary } = require('skia-canvas');
+const path = require('path');
 
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, REST, Routes } = require('discord.js');
-const EventLogic = require('./utils/eventLogic');
-const ImageGenerator = require('./utils/imageGenerator');
-const { commandData, handleInteraction: handleBrInteraction } = require('./banRoulette');
-const config = {
-    token: process.env.DISCORD_TOKEN,
-    authorizedUserId: process.env.AUTHORIZED_USER_ID
-};
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
-});
-
-const gameStates = new Map();
-const authorizedUsers = new Set([config.authorizedUserId]);
-const authorizedRoles = new Set();
-
-function isAuthorized(memberOrUser) {
-    const userId = memberOrUser.id || memberOrUser.user?.id;
-
-    if (authorizedUsers.has(userId)) {
-        return true;
-    }
-
-    if (memberOrUser.roles && memberOrUser.roles.cache) {
-        return memberOrUser.roles.cache.some(role => authorizedRoles.has(role.id));
-    }
-
-    return false;
+// Register bundled font so text renders on Railway/Linux
+try {
+    FontLibrary.use('Inter', [path.join(__dirname, '..', 'fonts', 'Inter.ttf')]);
+} catch (e) {
+    console.warn('[ImageGenerator] Could not register font:', e.message);
 }
 
-client.once('clientReady', async () => {
-    console.log(`Logged in as ${client.user.tag}!`);
-
-    // Register the /br slash command
-    try {
-        const rest = new REST({ version: '10' }).setToken(config.token);
-        // Registers to all guilds the bot is in; swap to per-guild if preferred
-        await rest.put(
-            Routes.applicationCommands(client.user.id),
-            { body: commandData }   // commandData is already an array
-        );
-        console.log('Registered /br and /brcancel slash commands.');
-    } catch (err) {
-        console.error('Failed to register /br slash command:', err);
-    }
-});
-
-client.on('messageCreate', async (message) => {
-    if (message.content === '=play') {
-        if (!isAuthorized(message.member || message.author)) {
-            return message.reply('Only authorized users can start the game lobby.');
-        }
-
-        if (gameStates.has(message.channel.id)) {
-            return message.reply('A game lobby is already open in this channel.');
-        }
-
-        const participants = new Map();
-        gameStates.set(message.channel.id, {
-            participants,
-            deadParticipants: new Map(),
-            status: 'lobby',
-            gameLogic: null
-        });
-
-        const embed = new EmbedBuilder()
-            .setTitle('Hunger Games Simulation Lobby')
-            .setDescription('**Welcome to the arena!**\n\nClick the button below to join the deadly competition.\n\n**Participants:** 0/24')
-            .setColor('#FFD700')
-            .setTimestamp();
-
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('join_game')
-                    .setLabel('Join Game')
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                    .setCustomId('start_game')
-                    .setLabel('Start Game')
-                    .setStyle(ButtonStyle.Danger)
-                    .setDisabled(true)
-            );
-
-        await message.reply({ embeds: [embed], components: [row] });
+class ImageGenerator {
+    constructor() {
+        this.backgroundColor = '#4b3f3f';
+        this.titleColor = '#FFD700';
+        this.subtitleColor = '#FFFFFF';
+        this.nameColor = '#FF8C00';
+        this.descriptionColor = '#FFFFFF';
+        this.avatarCache = new Map();
     }
 
-    if (message.content.startsWith('=addp ')) {
-        if (message.author.id !== config.authorizedUserId) {
-            return message.reply('Only the main admin can authorize users or roles.');
+    calculateCanvasSize(eventCount) {
+        const baseHeight = 150;
+        const eventHeight = 130;
+        const totalHeight = baseHeight + (eventCount * eventHeight) + 100;
+
+        return {
+            width: 800,
+            height: Math.max(400, Math.min(1600, totalHeight))
+        };
+    }
+
+    async generateEventImage(stageTitle, stageSubtitle, events) {
+        const { width, height } = this.calculateCanvasSize(events.length);
+        const canvas = new Canvas(width, height);
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = this.backgroundColor;
+        ctx.fillRect(0, 0, width, height);
+
+        const titleHeight = await this.drawTitle(ctx, stageTitle, width);
+        let currentY = titleHeight;
+
+        if (stageSubtitle) {
+            currentY = await this.drawSubtitle(ctx, stageSubtitle, width, currentY);
         }
 
-        const args = message.content.slice(6).trim();
-        let targetUserId = null;
-        let targetRoleId = null;
+        await this.drawEvents(ctx, events, width, currentY);
 
-        if (args.startsWith('<@&') && args.endsWith('>')) {
-            targetRoleId = args.slice(3, -1);
-        } else if (/^\d{17,19}$/.test(args)) {
-            const guild = message.guild;
-            if (guild) {
-                const role = guild.roles.cache.get(args);
-                if (role) {
-                    targetRoleId = args;
-                } else {
-                    targetUserId = args;
-                }
-            }
-        } else if (args.startsWith('<@') && args.endsWith('>')) {
-            targetUserId = args.slice(2, -1);
-            if (targetUserId.startsWith('!')) {
-                targetUserId = targetUserId.slice(1);
-            }
-        } else {
-            const guild = message.guild;
-            if (guild) {
-                const role = guild.roles.cache.find(r => r.name.toLowerCase() === args.toLowerCase());
-                if (role) {
-                    targetRoleId = role.id;
-                } else {
-                    const member = guild.members.cache.find(m => m.user.username.toLowerCase() === args.toLowerCase());
-                    if (member) {
-                        targetUserId = member.user.id;
-                    }
-                }
-            }
+        return await canvas.toBuffer('png');
+    }
+
+    async drawTitle(ctx, title, width) {
+        ctx.fillStyle = this.titleColor;
+        ctx.font = 'bold 36px Inter';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+
+        const titleLines = this.wrapText(ctx, title, width - 40);
+        let y = 20;
+
+        for (const line of titleLines) {
+            ctx.fillText(line, width / 2, y);
+            y += 42;
         }
 
-        if (targetRoleId) {
-            if (authorizedRoles.has(targetRoleId)) {
-                return message.reply('Role is already authorized.');
-            }
-            authorizedRoles.add(targetRoleId);
-            const guild = message.guild;
-            const role = guild?.roles.cache.get(targetRoleId);
-            message.reply(`Users with role **${role?.name || 'Unknown Role'}** can now host Hunger Games!`);
-        } else if (targetUserId) {
-            if (authorizedUsers.has(targetUserId)) {
-                return message.reply('User is already authorized.');
-            }
-            authorizedUsers.add(targetUserId);
-            message.reply(`<@${targetUserId}> can now host Hunger Games!`);
-        } else {
-            return message.reply('User or role not found. Use @mention, @role, ID, username, or role name.');
+        return y + 10;
+    }
+
+    async drawSubtitle(ctx, subtitle, width, startY) {
+        ctx.fillStyle = this.subtitleColor;
+        ctx.font = '20px Inter';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+
+        const subtitleLines = this.wrapText(ctx, subtitle, width - 40);
+        let y = startY;
+
+        for (const line of subtitleLines) {
+            ctx.fillText(line, width / 2, y);
+            y += 26;
+        }
+
+        return y + 15;
+    }
+
+    async drawEvents(ctx, events, width, startY) {
+        let currentY = startY;
+        const baseSpacing = 40;
+        const eventSpacing = Math.max(baseSpacing, 90 - events.length * 8);
+
+        for (const event of events) {
+            currentY = await this.drawSingleEvent(ctx, event, currentY, width);
+            currentY += eventSpacing;
         }
     }
 
-    if (message.content.startsWith('=removep ')) {
-        if (message.author.id !== config.authorizedUserId) {
-            return message.reply('Only the main admin can remove authorization.');
-        }
+    async drawSingleEvent(ctx, event, startY, width) {
+        const avatarSize = 64;
+        const avatarSpacing = 80;
+        let currentX = width / 2;
 
-        const args = message.content.slice(9).trim();
-        let targetUserId = null;
-        let targetRoleId = null;
+        if (event.participants && event.participants.length > 0) {
+            const totalWidth = (event.participants.length - 1) * avatarSpacing;
+            currentX = (width - totalWidth) / 2;
 
-        if (args.startsWith('<@&') && args.endsWith('>')) {
-            targetRoleId = args.slice(3, -1);
-        } else if (/^\d{17,19}$/.test(args)) {
-            if (authorizedRoles.has(args)) {
-                targetRoleId = args;
-            } else if (authorizedUsers.has(args)) {
-                targetUserId = args;
-            }
-        } else if (args.startsWith('<@') && args.endsWith('>')) {
-            targetUserId = args.slice(2, -1);
-            if (targetUserId.startsWith('!')) {
-                targetUserId = targetUserId.slice(1);
-            }
-        } else {
-            const guild = message.guild;
-            if (guild) {
-                const role = guild.roles.cache.find(r => r.name.toLowerCase() === args.toLowerCase());
-                if (role && authorizedRoles.has(role.id)) {
-                    targetRoleId = role.id;
-                } else {
-                    const member = guild.members.cache.find(m => m.user.username.toLowerCase() === args.toLowerCase());
-                    if (member && authorizedUsers.has(member.user.id)) {
-                        targetUserId = member.user.id;
-                    }
-                }
-            }
-        }
+            for (let i = 0; i < event.participants.length; i++) {
+                const participant = event.participants[i];
 
-        if (targetRoleId) {
-            if (!authorizedRoles.has(targetRoleId)) {
-                return message.reply('Role is not authorized.');
-            }
-            authorizedRoles.delete(targetRoleId);
-            const guild = message.guild;
-            const role = guild?.roles.cache.get(targetRoleId);
-            message.reply(`Removed authorization from role **${role?.name || 'Unknown Role'}**.`);
-        } else if (targetUserId) {
-            if (targetUserId === config.authorizedUserId) {
-                return message.reply('Cannot remove authorization from the main admin.');
-            }
-            if (!authorizedUsers.has(targetUserId)) {
-                return message.reply('User is not authorized.');
-            }
-            authorizedUsers.delete(targetUserId);
-            message.reply(`Removed authorization from <@${targetUserId}>.`);
-        } else {
-            return message.reply('User or role not found in authorized list.');
-        }
-    }
-
-    if (message.content.startsWith('=kill ')) {
-        if (message.author.id !== config.authorizedUserId) {
-            return message.reply('Only the main admin can use this command.');
-        }
-
-        const gameState = gameStates.get(message.channel.id);
-        if (!gameState || gameState.status !== 'running') {
-            return message.reply('No active game in this channel.');
-        }
-
-        const args = message.content.slice(6).trim();
-
-        if (args.toLowerCase() === 'all') {
-            let killCount = 0;
-            for (const [userId, userData] of gameState.participants.entries()) {
-                if (userData.alive && userId !== message.author.id) {
-                    userData.alive = false;
-                    if (!gameState.deadParticipants) {
-                        gameState.deadParticipants = new Map();
-                    }
-                    gameState.deadParticipants.set(userId, userData);
-                    if (!gameState.gameLogic.stageDeaths) {
-                        gameState.gameLogic.stageDeaths = [];
-                    }
-                    gameState.gameLogic.stageDeaths.push({
-                        username: userData.username,
-                        displayName: userData.displayName || userData.username,
-                        avatarURL: userData.avatarURL
-                    });
-                    killCount++;
-                }
-            }
-
-            if (killCount > 0) {
-                message.reply(`Admin eliminated ${killCount} tributes! Only the admin survives.`);
-
-                setTimeout(async () => {
-                    const imageGenerator = new ImageGenerator();
-                    try {
-                        const fallenImageBuffer = await imageGenerator.generateFallenTributesImage(gameState.gameLogic.stageDeaths);
-                        if (fallenImageBuffer) {
-                            const fallenAttachment = new AttachmentBuilder(fallenImageBuffer, { name: 'admin-elimination.png' });
-                            await message.channel.send({ files: [fallenAttachment] });
-                        }
-                    } catch (error) {
-                        console.error('Error generating admin elimination image:', error);
-                    }
-
-                    setTimeout(async () => {
-                        const adminUser = await client.users.fetch(message.author.id);
-                        const winnerEmbed = new EmbedBuilder()
-                            .setTitle('ADMIN VICTORY')
-                            .setDescription(`**${adminUser.displayName || adminUser.username}** wins by admin override!\n\n*The odds were definitely in your favor.*`)
-                            .setColor('#FFD700')
-                            .setThumbnail(adminUser.displayAvatarURL())
-                            .setTimestamp();
-
-                        await message.channel.send({ embeds: [winnerEmbed] });
-                        gameStates.delete(message.channel.id);
-                    }, 6000);
-                }, 6000);
-            } else {
-                message.reply('No living tributes to eliminate.');
-            }
-            return;
-        }
-
-        let targetUserId = null;
-
-        if (args.startsWith('<@') && args.endsWith('>')) {
-            targetUserId = args.slice(2, -1);
-            if (targetUserId.startsWith('!')) {
-                targetUserId = targetUserId.slice(1);
-            }
-        } else if (/^\d{17,19}$/.test(args)) {
-            targetUserId = args;
-        } else {
-            for (const [userId, userData] of gameState.participants.entries()) {
-                if (userData.username.toLowerCase() === args.toLowerCase() ||
-                    (userData.displayName && userData.displayName.toLowerCase() === args.toLowerCase())) {
-                    targetUserId = userId;
-                    break;
-                }
-            }
-        }
-
-        if (!targetUserId || !gameState.participants.has(targetUserId)) {
-            return message.reply('User not found in current game.');
-        }
-
-        const targetUser = gameState.participants.get(targetUserId);
-        if (!targetUser.alive) {
-            return message.reply('User is already dead.');
-        }
-
-        targetUser.alive = false;
-        if (!gameState.deadParticipants) {
-            gameState.deadParticipants = new Map();
-        }
-        gameState.deadParticipants.set(targetUserId, targetUser);
-        if (!gameState.gameLogic.stageDeaths) {
-            gameState.gameLogic.stageDeaths = [];
-        }
-        gameState.gameLogic.stageDeaths.push({
-            username: targetUser.username,
-            displayName: targetUser.displayName || targetUser.username,
-            avatarURL: targetUser.avatarURL
-        });
-
-        message.reply(`Admin eliminated **${targetUser.displayName || targetUser.username}** from the game!`);
-
-        const aliveCount = gameState.gameLogic.getAliveCount();
-        if (aliveCount <= 1) {
-            setTimeout(async () => {
-                const imageGenerator = new ImageGenerator();
                 try {
-                    const fallenImageBuffer = await imageGenerator.generateFallenTributesImage([{
-                        username: targetUser.username,
-                        displayName: targetUser.displayName || targetUser.username,
-                        avatarURL: targetUser.avatarURL
-                    }]);
-                    if (fallenImageBuffer) {
-                        const fallenAttachment = new AttachmentBuilder(fallenImageBuffer, { name: 'admin-kill.png' });
-                        await message.channel.send({ files: [fallenAttachment] });
-                    }
+                    const avatar = await this.loadAvatar(participant.avatarURL);
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(currentX + avatarSize/2, startY + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+                    ctx.closePath();
+                    ctx.clip();
+
+                    ctx.drawImage(avatar, currentX, startY, avatarSize, avatarSize);
+                    ctx.restore();
+
+                    ctx.strokeStyle = '#FFFFFF';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(currentX + avatarSize/2, startY + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+                    ctx.stroke();
                 } catch (error) {
-                    console.error('Error generating admin kill image:', error);
+                    console.error(`Failed to load avatar for ${participant.username}:`, error);
+
+                    ctx.fillStyle = '#666666';
+                    ctx.fillRect(currentX, startY, avatarSize, avatarSize);
+
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.font = '12px Inter';
+                    ctx.textAlign = 'center';
+                    const displayName = participant.displayName || participant.username;
+                    ctx.fillText(displayName.substring(0, 2).toUpperCase(),
+                               currentX + avatarSize/2, startY + avatarSize/2 + 4);
                 }
 
-                if (aliveCount === 1) {
-                    const winner = gameState.gameLogic.getWinner();
-                    const winnerDisplayName = winner.displayName || winner.username;
-                    const winnerEmbed = new EmbedBuilder()
-                        .setTitle('VICTORY')
-                        .setDescription(`**${winnerDisplayName}** has won the Hunger Games!\n\n*Congratulations, you have survived the arena!*`)
-                        .setColor('#FFD700')
-                        .setThumbnail(winner.avatarURL)
-                        .setTimestamp();
+                currentX += avatarSpacing;
+            }
+        }
 
-                    await message.channel.send({ embeds: [winnerEmbed] });
+        const textY = startY + avatarSize + 15;
+        const eventLines = this.wrapText(ctx, event.text, width - 40);
+
+        let lineY = textY;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.font = '16px Inter';
+
+        for (const line of eventLines) {
+            this.drawColoredEventText(ctx, line, width / 2, lineY, event.participants);
+            lineY += 20;
+        }
+
+        return lineY + 5;
+    }
+
+    drawColoredEventText(ctx, text, x, y, participants) {
+        const words = text.split(' ');
+        const participantNames = participants ? participants.map(p => p.displayName || p.username) : [];
+
+        const totalWidth = ctx.measureText(text).width;
+        let startX = x - (totalWidth / 2);
+
+        for (let i = 0; i < words.length; i++) {
+            const word = words[i];
+            const isName = participantNames.some(name => {
+                return word.toLowerCase().includes(name.toLowerCase()) ||
+                       name.toLowerCase().includes(word.toLowerCase()) ||
+                       this.isPartOfName(word, name, words, i);
+            });
+
+            ctx.fillStyle = isName ? this.nameColor : this.descriptionColor;
+
+            const wordWidth = ctx.measureText(word).width;
+            const spaceWidth = ctx.measureText(' ').width;
+
+            ctx.textAlign = 'left';
+            ctx.fillText(word, startX, y);
+
+            startX += wordWidth;
+            if (i < words.length - 1) {
+                startX += spaceWidth;
+            }
+        }
+    }
+
+    isPartOfName(word, fullName, allWords, currentIndex) {
+        const nameParts = fullName.toLowerCase().split(' ');
+        const wordLower = word.toLowerCase();
+
+        if (nameParts.includes(wordLower)) return true;
+
+        for (let i = 0; i < nameParts.length; i++) {
+            if (nameParts[i] === wordLower) {
+                let matches = true;
+                for (let j = 1; j < nameParts.length - i; j++) {
+                    if (currentIndex + j >= allWords.length ||
+                        allWords[currentIndex + j].toLowerCase() !== nameParts[i + j]) {
+                        matches = false;
+                        break;
+                    }
                 }
-                gameStates.delete(message.channel.id);
-            }, 6000);
+                if (matches) return true;
+            }
         }
-    }
-});
 
-client.on('interactionCreate', async (interaction) => {
-    try {
-    // Route /br slash command and br_* buttons to the Ban Roulette module
-    if (
-        (interaction.isChatInputCommand() && (interaction.commandName === 'br' || interaction.commandName === 'brcancel')) ||
-        (interaction.isButton() && interaction.customId.startsWith('br_'))
-    ) {
-        return handleBrInteraction(interaction);
+        return false;
     }
 
-    // Hunger Games button handling
-    if (!interaction.isButton()) return;
-
-    const gameState = gameStates.get(interaction.channel.id);
-    if (!gameState) return;
-
-    if (interaction.customId === 'join_game') {
-        if (gameState.status !== 'lobby') {
-            return interaction.reply({ content: 'The game has already started!', flags: 64 });
+    async loadAvatar(avatarURL) {
+        if (this.avatarCache.has(avatarURL)) {
+            return this.avatarCache.get(avatarURL);
         }
-
-        if (gameState.participants.has(interaction.user.id)) {
-            return interaction.reply({ content: 'You are already in the game!', flags: 64 });
-        }
-
-        if (gameState.participants.size >= 24) {
-            return interaction.reply({ content: 'The game is full (24 participants maximum)!', flags: 64 });
-        }
-
-        gameState.participants.set(interaction.user.id, {
-            username: interaction.user.username,
-            displayName: interaction.user.displayName,
-            avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 }),
-            alive: true
-        });
-
-        const participantList = Array.from(gameState.participants.keys())
-            .map(id => `<@${id}>`)
-            .join('\n');
-
-        const embed = new EmbedBuilder()
-            .setTitle('Hunger Games Simulation Lobby')
-            .setDescription(`**Welcome to the arena!**\n\nClick the button below to join the deadly competition.\n\n**Participants:** ${gameState.participants.size}/24\n${participantList}`)
-            .setColor('#FFD700')
-            .setTimestamp();
-
-        const startDisabled = gameState.participants.size < 4;
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('join_game')
-                    .setLabel('Join Game')
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                    .setCustomId('start_game')
-                    .setLabel('Start Game')
-                    .setStyle(ButtonStyle.Danger)
-                    .setDisabled(startDisabled)
-            );
 
         try {
-            await interaction.update({ embeds: [embed], components: [row] });
-        } catch (err) {
-            if (err?.code !== 10062) console.error('join_game update error:', err);
+            const avatar = await loadImage(avatarURL);
+            this.avatarCache.set(avatarURL, avatar);
+            return avatar;
+        } catch (error) {
+            console.error('Failed to load avatar:', error);
+            throw error;
         }
     }
 
-    if (interaction.customId === 'start_game') {
-        if (!isAuthorized(interaction.member || interaction.user)) {
-            return interaction.reply({ content: 'Only authorized users can start the game!', flags: 64 });
-        }
+    wrapText(ctx, text, maxWidth) {
+        const words = text.split(' ');
+        const lines = [];
+        let currentLine = '';
 
-        if (gameState.participants.size < 4) {
-            return interaction.reply({ content: 'At least 4 participants are needed to start the game!', flags: 64 });
-        }
+        for (const word of words) {
+            const testLine = currentLine + (currentLine ? ' ' : '') + word;
+            const metrics = ctx.measureText(testLine);
 
-        gameState.status = 'running';
-        gameState.gameLogic = new EventLogic(gameState.participants);
-
-        const embed = new EmbedBuilder()
-            .setTitle('Game Starting!')
-            .setDescription('The Hunger Games simulation is about to begin...\n\n**May the odds be ever in your favor!**')
-            .setColor('#FF4444')
-            .setTimestamp();
-
-        const disabledRow = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('join_game')
-                    .setLabel('Join Game')
-                    .setStyle(ButtonStyle.Success)
-                    .setDisabled(true),
-                new ButtonBuilder()
-                    .setCustomId('start_game')
-                    .setLabel('Start Game')
-                    .setStyle(ButtonStyle.Danger)
-                    .setDisabled(true)
-            );
-
-        try {
-            await interaction.update({ embeds: [embed], components: [disabledRow] });
-        } catch (err) {
-            if (err?.code !== 10062) console.error('start_game update error:', err);
-        }
-
-        setTimeout(async () => {
-            await startGameSimulation(interaction.channel, gameState);
-        }, 3000);
-    }
-    } catch (err) {
-        if (err?.code !== 10062) console.error('[interactionCreate] error:', err);
-    }
-});
-
-async function startGameSimulation(channel, gameState) {
-    const { gameLogic } = gameState;
-    const imageGenerator = new ImageGenerator();
-    let isFirstImage = true;
-
-    while (gameLogic.getAliveCount() > 1) {
-        const currentStage = gameLogic.getCurrentStage();
-        const events = gameLogic.getEventsForCurrentStage();
-
-        const batchSize = Math.min(6, Math.max(3, Math.ceil(events.length / 3)));
-        for (let i = 0; i < events.length; i += batchSize) {
-            const eventBatch = events.slice(i, i + batchSize);
-
-            if (!isFirstImage) {
-                await new Promise(resolve => setTimeout(resolve, 6000));
+            if (metrics.width > maxWidth && currentLine) {
+                lines.push(currentLine);
+                currentLine = word;
+            } else {
+                currentLine = testLine;
             }
-            isFirstImage = false;
+        }
+
+        if (currentLine) lines.push(currentLine);
+        return lines;
+    }
+
+    async generateFallenTributesImage(fallenTributes) {
+        if (!fallenTributes || fallenTributes.length === 0) return null;
+
+        const avatarSize = 80;
+        const avatarsPerRow = 6;
+        const rows = Math.ceil(fallenTributes.length / avatarsPerRow);
+        const padding = 40;
+        const titleHeight = 80;
+
+        const width = 800;
+        const height = titleHeight + padding + (rows * (avatarSize + 20)) + padding;
+
+        const canvas = new Canvas(width, height);
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = this.backgroundColor;
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 32px Inter';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText('Fallen Tributes', width / 2, 30);
+
+        let currentRow = 0;
+        let currentCol = 0;
+        const startX = (width - (Math.min(fallenTributes.length, avatarsPerRow) * (avatarSize + 20) - 20)) / 2;
+
+        for (const tribute of fallenTributes) {
+            const x = startX + (currentCol * (avatarSize + 20));
+            const y = titleHeight + padding + (currentRow * (avatarSize + 30));
 
             try {
-                const imageBuffer = await imageGenerator.generateEventImage(
-                    currentStage.title,
-                    currentStage.subtitle || '',
-                    eventBatch
-                );
+                const avatar = await this.loadAvatar(tribute.avatarURL);
 
-                const attachment = new AttachmentBuilder(imageBuffer, { name: 'hunger-games-event.png' });
-                await channel.send({ files: [attachment] });
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(x + avatarSize/2, y + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.clip();
+
+                ctx.filter = 'grayscale(100%) contrast(1.2) brightness(0.8)';
+                ctx.drawImage(avatar, x, y, avatarSize, avatarSize);
+                ctx.restore();
+
+                ctx.strokeStyle = '#666666';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(x + avatarSize/2, y + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+                ctx.stroke();
+
             } catch (error) {
-                console.error('Error generating image:', error);
+                console.error(`Failed to load fallen tribute avatar for ${tribute.displayName || tribute.username}:`, error);
 
-                const eventText = eventBatch.map(event => event.text).join('\n');
-                const fallbackEmbed = new EmbedBuilder()
-                    .setDescription(eventText)
-                    .setColor('#FF6B35');
-                await channel.send({ embeds: [fallbackEmbed] });
+                ctx.fillStyle = '#333333';
+                ctx.fillRect(x, y, avatarSize, avatarSize);
+
+                ctx.fillStyle = '#666666';
+                ctx.font = '14px Inter';
+                ctx.textAlign = 'center';
+                const displayName = tribute.displayName || tribute.username;
+                ctx.fillText(displayName.substring(0, 2).toUpperCase(),
+                           x + avatarSize/2, y + avatarSize/2 + 4);
+            }
+
+            currentCol++;
+            if (currentCol >= avatarsPerRow) {
+                currentCol = 0;
+                currentRow++;
             }
         }
 
-        const fallenTributes = gameLogic.getStageDeaths();
-        if (fallenTributes.length > 0) {
-            await new Promise(resolve => setTimeout(resolve, 6000));
-
-            try {
-                const fallenImageBuffer = await imageGenerator.generateFallenTributesImage(fallenTributes);
-                if (fallenImageBuffer) {
-                    const fallenAttachment = new AttachmentBuilder(fallenImageBuffer, { name: 'fallen-tributes.png' });
-                    await channel.send({ files: [fallenAttachment] });
-                }
-            } catch (error) {
-                console.error('Error generating fallen tributes image:', error);
-            }
-        }
-
-        gameLogic.nextStage();
-
-        if (gameLogic.getAliveCount() > 1) {
-            await new Promise(resolve => setTimeout(resolve, 6000));
-        }
+        return await canvas.toBuffer('png');
     }
-
-    await new Promise(resolve => setTimeout(resolve, 6000));
-
-    const winner = gameLogic.getWinner();
-    const winnerDisplayName = winner.displayName || winner.username;
-    const winnerEmbed = new EmbedBuilder()
-        .setTitle('VICTORY')
-        .setDescription(`**${winnerDisplayName}** has won the Hunger Games!\n\n*Congratulations, you have survived the arena!*`)
-        .setColor('#FFD700')
-        .setThumbnail(winner.avatarURL)
-        .setTimestamp();
-
-    await channel.send({ embeds: [winnerEmbed] });
-    gameStates.delete(channel.id);
 }
 
-// Prevent unhandled Discord API errors from crashing the process
-client.on('error', (err) => {
-    if (err?.code !== 10062) console.error('[Discord client error]', err);
-});
-
-client.login(config.token);
+module.exports = ImageGenerator;
