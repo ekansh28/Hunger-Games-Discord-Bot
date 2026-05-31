@@ -38,16 +38,16 @@ class ImageGenerator {
 
             await this.drawEvents(ctx, events, width, currentY);
             console.log("Events:", events.map(e => e.text));
-            return await canvas.toBuffer('png');
+            return canvas.toBuffer('png');
         } catch (err) {
             console.error('Canvas generation failed:', err);
-            // Fallback error image so Discord doesn't crash
+            // Return a simple error image so AttachmentBuilder never gets undefined
             const errorCanvas = createCanvas(800, 200);
             const ctx = errorCanvas.getContext('2d');
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, 800, 200);
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = '20px "Arial", "Helvetica", sans-serif';
+            ctx.font = '20px "Liberation Sans", "Arial", sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText('⚠️ Failed to generate event image ⚠️', 400, 100);
             return errorCanvas.toBuffer('png');
@@ -56,7 +56,7 @@ class ImageGenerator {
 
     async drawTitle(ctx, title, width) {
         ctx.fillStyle = this.titleColor;
-        ctx.font = 'bold 36px "Arial", "Helvetica", "Noto Sans", sans-serif';
+        ctx.font = 'bold 36px "Liberation Sans", "DejaVu Sans", "Arial", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -71,7 +71,7 @@ class ImageGenerator {
 
     async drawSubtitle(ctx, subtitle, width, startY) {
         ctx.fillStyle = this.subtitleColor;
-        ctx.font = '20px "Arial", "Helvetica", "Noto Sans", sans-serif';
+        ctx.font = '20px "Liberation Sans", "DejaVu Sans", "Arial", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -121,7 +121,7 @@ class ImageGenerator {
                     ctx.fillStyle = '#666666';
                     ctx.fillRect(currentX, startY, avatarSize, avatarSize);
                     ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '12px "Arial", "Helvetica", sans-serif';
+                    ctx.font = '12px "Liberation Sans", "Arial", sans-serif';
                     ctx.textAlign = 'center';
                     const dn = participant.displayName || participant.username;
                     ctx.fillText(dn.substring(0, 2).toUpperCase(), currentX + avatarSize/2, startY + avatarSize/2 + 4);
@@ -130,7 +130,7 @@ class ImageGenerator {
             }
         }
 
-        ctx.font = '16px "Arial", "Helvetica", "Noto Sans", sans-serif';
+        ctx.font = '16px "Liberation Sans", "DejaVu Sans", "Arial", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         const eventLines = this.wrapText(ctx, event.text, width - 40);
@@ -227,7 +227,7 @@ class ImageGenerator {
         ctx.fillRect(0, 0, width, height);
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 32px "Arial", "Helvetica", "Noto Sans", sans-serif';
+        ctx.font = 'bold 32px "Liberation Sans", "DejaVu Sans", "Arial", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillText('Fallen Tributes', width / 2, 30);
@@ -259,7 +259,7 @@ class ImageGenerator {
                 ctx.fillStyle = '#333333';
                 ctx.fillRect(x, y, avatarSize, avatarSize);
                 ctx.fillStyle = '#666666';
-                ctx.font = '14px "Arial", "Helvetica", sans-serif';
+                ctx.font = '14px "Liberation Sans", "Arial", sans-serif';
                 ctx.textAlign = 'center';
                 const dn = tribute.displayName || tribute.username;
                 ctx.fillText(dn.substring(0, 2).toUpperCase(), x + avatarSize/2, y + avatarSize/2 + 4);
@@ -269,7 +269,7 @@ class ImageGenerator {
             if (currentCol >= avatarsPerRow) { currentCol = 0; currentRow++; }
         }
 
-        return await canvas.toBuffer('png');
+        return canvas.toBuffer('png');
     }
 }
 
