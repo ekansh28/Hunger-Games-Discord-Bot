@@ -1,8 +1,20 @@
 [phases.setup]
 nixPkgs = [
-  "nodejs_22"
+  "nodejs_22",
+  "cairo",
+  "pango",
+  "libpng",
+  "libjpeg",
+  "giflib",
+  "librsvg",
+  "pkg-config",
+  "python3",
+  "nodePackages.node-gyp",
+  "fontconfig",
+  "dejavu_fonts",
+  "noto-fonts",
+  "noto-fonts-cjk"
 ]
-
 [phases.install]
 cmds = ["npm ci"]
 
