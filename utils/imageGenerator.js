@@ -1,4 +1,4 @@
-const { Canvas, loadImage } = require('skia-canvas');
+const { Canvas, loadImage } = require('canvas');
 
 class ImageGenerator {
     constructor() {
@@ -36,6 +36,7 @@ class ImageGenerator {
         }
 
         await this.drawEvents(ctx, events, width, currentY);
+        console.log("Events:", events.map(e => e.text));
         return await canvas.toBuffer('png');
     }
 

@@ -8,7 +8,11 @@ nixPkgs = [
   "librsvg",
   "pkg-config",
   "python3",
-  "nodePackages.node-gyp"
+  "nodePackages.node-gyp",
+  "nodejs_22",
+  "fontconfig",
+  "dejavu_fonts",
+  "noto-fonts"
 ]
 
 [phases.build]
