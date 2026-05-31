@@ -13,8 +13,9 @@ nixPkgs = [
   "fontconfig",
   "dejavu_fonts",
   "noto-fonts",
-  "noto-fonts-cjk"
+  "noto-fonts-cjk-sans"
 ]
+
 [phases.install]
 cmds = ["npm ci"]
 
