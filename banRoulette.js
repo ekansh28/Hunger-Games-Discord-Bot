@@ -13,7 +13,15 @@ const {
     AttachmentBuilder,
     PermissionsBitField,
 } = require('discord.js');
-const { createCanvas, loadImage } = require('canvas');
+const { createCanvas, loadImage, registerFont } = require('canvas');
+const path = require('path');
+
+// Register bundled font so text renders on Railway/Linux
+try {
+    registerFont(path.join(__dirname, 'fonts', 'Inter.ttf'), { family: 'Inter' });
+} catch (e) {
+    console.warn('[BanRoulette] Could not register font:', e.message);
+}
 
 // ── Constants ────────────────────────────────────────────────
 const CANVAS_SIZE   = 1200;
@@ -21,7 +29,8 @@ const AVATAR_RADIUS = 110;         // px — radius of each avatar circle
 const BORDER_WIDTH  = 12;           // px — active-turn highlight ring
 const CROSS_WIDTH   = 28;          // px — elimination X stroke width
 
-const TIMEOUT_MS    = 5 * 60 * 1000;   // 5-minute ban penalty
+const TIMEOUT_MS = 5 * 1000; // 5-second ban penalty meaning
+
 
 // ── Admin ─────────────────────────────────────────────────────
 const BR_ADMIN_ID = '1198980443823947927';
@@ -328,7 +337,7 @@ async function renderCanvas(session) {
         if (needed > 0) {
             const footerText = `Waiting for ${needed} more player${needed !== 1 ? 's' : ''}...`;
             ctx.fillStyle    = 'rgba(200,200,200,0.85)';
-            ctx.font         = 'bold 32px Georgia';
+            ctx.font         = 'bold 32px Inter';
             ctx.textAlign    = 'center';
             ctx.textBaseline = 'bottom';
             ctx.fillText(footerText, size / 2, size - 20);
@@ -351,7 +360,7 @@ async function fetchAvatar(user) {
         ctx.fillStyle   = `hsl(${hue},60%,40%)`;
         ctx.beginPath(); ctx.arc(128, 128, 128, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle   = '#fff';
-        ctx.font        = 'bold 96px sans-serif';
+        ctx.font        = 'bold 96px Inter';
         ctx.textAlign   = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText((user.username[0] || '?').toUpperCase(), 128, 128);

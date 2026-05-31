@@ -8,11 +8,16 @@ nixPkgs = [
   "librsvg",
   "pkg-config",
   "python3",
-  "nodePackages.node-gyp"
+  "nodePackages.node-gyp",
+  "curl"
 ]
 
 [phases.build]
-cmds = ["npm install"]
+cmds = [
+  "mkdir -p fonts",
+  "curl -L https://github.com/google/fonts/raw/main/ofl/inter/Inter%5Bslnt%2Cwght%5D.ttf -o fonts/Inter.ttf",
+  "npm install"
+]
 
 [start]
 cmd = "npm start"

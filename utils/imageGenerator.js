@@ -1,6 +1,12 @@
-const { Canvas, loadImage } = require('skia-canvas');
-const https = require('https');
-const http = require('http');
+const { Canvas, loadImage, FontLibrary } = require('skia-canvas');
+const path = require('path');
+
+// Register bundled font so text renders on Railway/Linux
+try {
+    FontLibrary.use('Inter', [path.join(__dirname, '..', 'fonts', 'Inter.ttf')]);
+} catch (e) {
+    console.warn('[ImageGenerator] Could not register font:', e.message);
+}
 
 class ImageGenerator {
     constructor() {
@@ -45,7 +51,7 @@ class ImageGenerator {
 
     async drawTitle(ctx, title, width) {
         ctx.fillStyle = this.titleColor;
-        ctx.font = 'bold 36px Arial';
+        ctx.font = 'bold 36px Inter';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -62,7 +68,7 @@ class ImageGenerator {
 
     async drawSubtitle(ctx, subtitle, width, startY) {
         ctx.fillStyle = this.subtitleColor;
-        ctx.font = '20px Arial';
+        ctx.font = '20px Inter';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -124,7 +130,7 @@ class ImageGenerator {
                     ctx.fillRect(currentX, startY, avatarSize, avatarSize);
 
                     ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '12px Arial';
+                    ctx.font = '12px Inter';
                     ctx.textAlign = 'center';
                     const displayName = participant.displayName || participant.username;
                     ctx.fillText(displayName.substring(0, 2).toUpperCase(),
@@ -141,7 +147,7 @@ class ImageGenerator {
         let lineY = textY;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.font = '16px Arial';
+        ctx.font = '16px Inter';
 
         for (const line of eventLines) {
             this.drawColoredEventText(ctx, line, width / 2, lineY, event.participants);
@@ -155,13 +161,11 @@ class ImageGenerator {
         const words = text.split(' ');
         const participantNames = participants ? participants.map(p => p.displayName || p.username) : [];
 
-        let currentX = x;
         const totalWidth = ctx.measureText(text).width;
         let startX = x - (totalWidth / 2);
 
         for (let i = 0; i < words.length; i++) {
             const word = words[i];
-            // Check if any participant name is contained within this word or if this word is part of a participant name
             const isName = participantNames.some(name => {
                 return word.toLowerCase().includes(name.toLowerCase()) ||
                        name.toLowerCase().includes(word.toLowerCase()) ||
@@ -184,19 +188,13 @@ class ImageGenerator {
     }
 
     isPartOfName(word, fullName, allWords, currentIndex) {
-        // Check if this word is part of a multi-word display name
         const nameParts = fullName.toLowerCase().split(' ');
         const wordLower = word.toLowerCase();
 
-        // Direct match
-        if (nameParts.includes(wordLower)) {
-            return true;
-        }
+        if (nameParts.includes(wordLower)) return true;
 
-        // Check if consecutive words form the full name
         for (let i = 0; i < nameParts.length; i++) {
             if (nameParts[i] === wordLower) {
-                // Check if following words also match
                 let matches = true;
                 for (let j = 1; j < nameParts.length - i; j++) {
                     if (currentIndex + j >= allWords.length ||
@@ -244,10 +242,7 @@ class ImageGenerator {
             }
         }
 
-        if (currentLine) {
-            lines.push(currentLine);
-        }
-
+        if (currentLine) lines.push(currentLine);
         return lines;
     }
 
@@ -270,7 +265,7 @@ class ImageGenerator {
         ctx.fillRect(0, 0, width, height);
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 32px Arial';
+        ctx.font = 'bold 32px Inter';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillText('Fallen Tributes', width / 2, 30);
@@ -309,7 +304,7 @@ class ImageGenerator {
                 ctx.fillRect(x, y, avatarSize, avatarSize);
 
                 ctx.fillStyle = '#666666';
-                ctx.font = '14px Arial';
+                ctx.font = '14px Inter';
                 ctx.textAlign = 'center';
                 const displayName = tribute.displayName || tribute.username;
                 ctx.fillText(displayName.substring(0, 2).toUpperCase(),
