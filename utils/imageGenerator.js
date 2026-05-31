@@ -23,7 +23,7 @@ class ImageGenerator {
     async generateEventImage(stageTitle, stageSubtitle, events) {
         try {
             const { width, height } = this.calculateCanvasSize(events.length);
-            const canvas = new Canvas(width, height);
+            const canvas = createCanvas(width, height);
             const ctx = canvas.getContext('2d');
 
             ctx.fillStyle = this.backgroundColor;
@@ -275,7 +275,7 @@ class ImageGenerator {
             if (currentCol >= avatarsPerRow) { currentCol = 0; currentRow++; }
         }
 
-        const buffer = canvas.toBuffer('png');
+        return canvas.toBuffer('image/png');
 
     }
 }
