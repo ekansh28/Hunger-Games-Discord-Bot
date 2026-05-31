@@ -1,19 +1,7 @@
-const { Canvas, loadImage, FontLibrary } = require('skia-canvas');
-const path = require('path');
+const { Canvas, loadImage } = require('skia-canvas');
 
-// Register bundled font — skia-canvas reads the family name from the file itself
-let FONT_FAMILY = 'sans-serif';
-try {
-    const fontPath = path.join(__dirname, '..', 'fonts', 'Inter.ttf');
-    const families = FontLibrary.use(fontPath);
-    // families is an array of registered family name strings
-    if (families && families.length > 0) {
-        FONT_FAMILY = Array.isArray(families[0]) ? families[0][0] : families[0];
-    }
-    console.log('[ImageGenerator] Registered font family:', FONT_FAMILY);
-} catch (e) {
-    console.warn('[ImageGenerator] Could not register font, falling back to sans-serif:', e.message);
-}
+// Use a standard system font – no external file needed
+const FONT_FAMILY = 'sans-serif';
 
 class ImageGenerator {
     constructor() {
