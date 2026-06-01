@@ -1,21 +1,14 @@
-const { createCanvas, loadImage, registerFont } = require('canvas');
+const { createCanvas, loadImage } = require('canvas');
 const { execSync } = require('child_process');
 
-registerFont(
-    '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
-    {
-        family: 'Noto Sans'
-    }
-);
 
 try {
-    console.log('=== FONT LIST ===');
     console.log(
-        execSync('fc-list | head -20').toString()
+        execSync('find /nix/store -iname "*Noto*" | head -50')
+            .toString()
     );
-    console.log('=================');
 } catch (err) {
-    console.error('fc-list failed:', err);
+    console.error(err);
 }
 class ImageGenerator {
     constructor() {
