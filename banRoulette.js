@@ -13,7 +13,17 @@ const {
     AttachmentBuilder,
     PermissionsBitField,
 } = require('discord.js');
-const { Canvas, loadImage } = require('canvas');
+const { createCanvas, loadImage, registerFont } = require('canvas');
+const path = require('path');
+const fs = require('fs');
+
+// ── Load custom font from fonts/font.ttf (same as imageGenerator) ──
+const FONT_PATH = path.join(__dirname, '..', 'fonts', 'font.ttf');
+const FONT_FAMILY = fs.existsSync(FONT_PATH) ? (() => {
+    registerFont(FONT_PATH, { family: 'CustomFont' });
+    console.log('[BanRoulette] Loaded custom font from', FONT_PATH);
+    return 'CustomFont';
+})() : 'Georgia';  // fallback to a solid serif font
 
 // ── Constants ────────────────────────────────────────────────
 const CANVAS_SIZE   = 1200;
@@ -113,8 +123,9 @@ const banRouletteCommand = new SlashCommandBuilder()
             .setRequired(false));
 
 const brCancelCommand = new SlashCommandBuilder()
-.setName('brcancel')
-.setDescription('Cancel the active Ban Roulette session in this channel.');
+    .setName('brcancel')
+    .setDescription('Cancel the active Ban Roulette session in this channel.');
+
 // ── Utility: draw canvas and return PNG buffer ────────────────
 async function renderCanvas(session) {
     const size = CANVAS_SIZE;
@@ -226,7 +237,7 @@ async function renderCanvas(session) {
         if (needed > 0) {
             const footerText = `Waiting for ${needed} more player${needed !== 1 ? 's' : ''}...`;
             ctx.fillStyle    = 'rgba(200,200,200,0.85)';
-            ctx.font         = 'bold 32px Georgia';
+            ctx.font         = `bold 32px "${FONT_FAMILY}"`;
             ctx.textAlign    = 'center';
             ctx.textBaseline = 'bottom';
             ctx.fillText(footerText, size / 2, size - 20);
@@ -249,7 +260,7 @@ async function fetchAvatar(user) {
         ctx.fillStyle   = `hsl(${hue},60%,40%)`;
         ctx.beginPath(); ctx.arc(128, 128, 128, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle   = '#fff';
-        ctx.font        = 'bold 96px sans-serif';
+        ctx.font        = `bold 96px "${FONT_FAMILY}"`;
         ctx.textAlign   = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText((user.username[0] || '?').toUpperCase(), 128, 128);
@@ -346,6 +357,7 @@ async function handleBrCancel(interaction) {
     if (session.message) await session.message.delete().catch(() => {});
     await interaction.reply('Ban Roulette session cancelled.');
 }
+
 // ── Button: br_join ───────────────────────────────────────────
 async function handleJoin(interaction) {
     const channelId = interaction.channel.id;
@@ -560,7 +572,3 @@ module.exports = {
     commandData: [banRouletteCommand.toJSON(), brCancelCommand.toJSON()],
     handleInteraction,
 };
-
-/* ================================================================
-   INTEGRATION GUIDE (unchanged)
-   ================================================================ */

@@ -1,15 +1,15 @@
-const { createCanvas, loadImage } = require('canvas');
-const { execSync } = require('child_process');
+const { createCanvas, loadImage, registerFont } = require('canvas');
+const path = require('path');
+const fs = require('fs');
 
-console.log('=== FC MATCH ===');
-console.log(execSync('fc-match sans-serif').toString());
+// Load custom font from fonts/font.ttf if present
+const FONT_PATH = path.join(__dirname, '..', 'fonts', 'Helvetica.ttf');
+const FONT_FAMILY = fs.existsSync(FONT_PATH) ? (() => {
+    registerFont(FONT_PATH, { family: 'CustomFont' });
+    console.log('[ImageGenerator] Loaded custom font from', FONT_PATH);
+    return 'CustomFont';
+})() : 'DejaVu Sans';
 
-console.log('=== NOTO SANS ===');
-console.log(
-    execSync(
-        'find /nix/store -iname "NotoSans*.ttf" | head -20'
-    ).toString()
-);
 class ImageGenerator {
     constructor() {
         this.backgroundColor = '#4b3f3f';
@@ -47,23 +47,16 @@ class ImageGenerator {
             }
 
             await this.drawEvents(ctx, events, width, currentY);
-            console.log("Events:", events.map(e => e.text));
-            const buffer = canvas.toBuffer('image/png');
-
-            console.log('BUFFER:', buffer);
-            console.log('IS BUFFER:', Buffer.isBuffer(buffer));
-            console.log('BUFFER LENGTH:', buffer?.length);
-
-            return buffer;
+            return canvas.toBuffer('image/png');
         } catch (err) {
-            console.error('Canvas generation failed:', err);
-            // Return a simple error image so AttachmentBuilder never gets undefined
+            console.error('Event image generation failed:', err);
+            // Fallback error image
             const errorCanvas = createCanvas(800, 200);
             const ctx = errorCanvas.getContext('2d');
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, 800, 200);
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = '20px "DejaVu Sans"';
+            ctx.font = `20px "${FONT_FAMILY}"`;
             ctx.textAlign = 'center';
             ctx.fillText('⚠️ Failed to generate event image ⚠️', 400, 100);
             return errorCanvas.toBuffer('png');
@@ -72,7 +65,7 @@ class ImageGenerator {
 
     async drawTitle(ctx, title, width) {
         ctx.fillStyle = this.titleColor;
-        ctx.font = 'bold 36px "DejaVu Sans"';
+        ctx.font = `bold 36px "${FONT_FAMILY}"`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -87,7 +80,7 @@ class ImageGenerator {
 
     async drawSubtitle(ctx, subtitle, width, startY) {
         ctx.fillStyle = this.subtitleColor;
-        ctx.font = '20px "DejaVu Sans"';
+        ctx.font = `20px "${FONT_FAMILY}"`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -133,11 +126,11 @@ class ImageGenerator {
                     ctx.beginPath();
                     ctx.arc(currentX + avatarSize/2, startY + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
                     ctx.stroke();
-                } catch (error) {
+                } catch {
                     ctx.fillStyle = '#666666';
                     ctx.fillRect(currentX, startY, avatarSize, avatarSize);
                     ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '12px "DejaVu Sans"';
+                    ctx.font = `12px "${FONT_FAMILY}"`;
                     ctx.textAlign = 'center';
                     const dn = participant.displayName || participant.username;
                     ctx.fillText(dn.substring(0, 2).toUpperCase(), currentX + avatarSize/2, startY + avatarSize/2 + 4);
@@ -146,7 +139,7 @@ class ImageGenerator {
             }
         }
 
-        ctx.font = '16px "DejaVu Sans"';
+        ctx.font = `16px "${FONT_FAMILY}"`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         const eventLines = this.wrapText(ctx, event.text, width - 40);
@@ -213,8 +206,7 @@ class ImageGenerator {
         let currentLine = '';
         for (const word of words) {
             const testLine = currentLine + (currentLine ? ' ' : '') + word;
-            const width = ctx.measureText(testLine).width;
-            if (width > maxWidth && currentLine) {
+            if (ctx.measureText(testLine).width > maxWidth && currentLine) {
                 lines.push(currentLine);
                 currentLine = word;
             } else {
@@ -243,7 +235,7 @@ class ImageGenerator {
         ctx.fillRect(0, 0, width, height);
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 32px "DejaVu Sans"';
+        ctx.font = `bold 32px "${FONT_FAMILY}"`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillText('Fallen Tributes', width / 2, 30);
@@ -275,7 +267,7 @@ class ImageGenerator {
                 ctx.fillStyle = '#333333';
                 ctx.fillRect(x, y, avatarSize, avatarSize);
                 ctx.fillStyle = '#666666';
-                ctx.font = '14px "DejaVu Sans"';
+                ctx.font = `14px "${FONT_FAMILY}"`;
                 ctx.textAlign = 'center';
                 const dn = tribute.displayName || tribute.username;
                 ctx.fillText(dn.substring(0, 2).toUpperCase(), x + avatarSize/2, y + avatarSize/2 + 4);
@@ -286,7 +278,6 @@ class ImageGenerator {
         }
 
         return canvas.toBuffer('image/png');
-
     }
 }
 
