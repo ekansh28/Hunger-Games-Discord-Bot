@@ -13,7 +13,7 @@ const {
     AttachmentBuilder,
     PermissionsBitField,
 } = require('discord.js');
-const { Canvas, loadImage } = require('skia-canvas');
+const { Canvas, loadImage } = require('canvas');
 
 // ── Constants ────────────────────────────────────────────────
 const CANVAS_SIZE   = 1200;

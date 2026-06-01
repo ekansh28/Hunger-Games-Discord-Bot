@@ -3,12 +3,10 @@ const { execSync } = require('child_process');
 
 try {
     console.log(
-        execSync(
-            'find /nix/store -iname "NotoSansMono*.ttf" | head -5'
-        ).toString()
+        execSync('fc-match sans-serif').toString()
     );
-} catch (e) {
-    console.error(e);
+} catch (err) {
+    console.error(err);
 }
 class ImageGenerator {
     constructor() {
