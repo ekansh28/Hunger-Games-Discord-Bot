@@ -1,13 +1,15 @@
 const { createCanvas, loadImage } = require('canvas');
 const { execSync } = require('child_process');
 
-try {
-    console.log(
-        execSync('fc-match sans-serif').toString()
-    );
-} catch (err) {
-    console.error(err);
-}
+console.log('=== FC MATCH ===');
+console.log(execSync('fc-match sans-serif').toString());
+
+console.log('=== NOTO SANS ===');
+console.log(
+    execSync(
+        'find /nix/store -iname "NotoSans*.ttf" | head -20'
+    ).toString()
+);
 class ImageGenerator {
     constructor() {
         this.backgroundColor = '#4b3f3f';
