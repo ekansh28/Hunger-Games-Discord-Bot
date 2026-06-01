@@ -1,14 +1,13 @@
 const { createCanvas, loadImage } = require('canvas');
 const { execSync } = require('child_process');
 
-
 try {
     console.log(
-        execSync('find /nix/store -iname "*Noto*" | head -50')
-            .toString()
+        'FC MATCH:',
+        execSync('fc-match sans-serif').toString()
     );
-} catch (err) {
-    console.error(err);
+} catch (e) {
+    console.error(e);
 }
 class ImageGenerator {
     constructor() {
