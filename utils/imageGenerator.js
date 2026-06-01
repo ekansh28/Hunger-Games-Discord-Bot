@@ -63,7 +63,7 @@ class ImageGenerator {
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, 800, 200);
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = '20px "sans-serif"';
+            ctx.font = '20px "DejaVu Sans"';
             ctx.textAlign = 'center';
             ctx.fillText('⚠️ Failed to generate event image ⚠️', 400, 100);
             return errorCanvas.toBuffer('png');
@@ -72,7 +72,7 @@ class ImageGenerator {
 
     async drawTitle(ctx, title, width) {
         ctx.fillStyle = this.titleColor;
-        ctx.font = 'bold 36px "sans-serif"';
+        ctx.font = 'bold 36px "DejaVu Sans"';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -87,7 +87,7 @@ class ImageGenerator {
 
     async drawSubtitle(ctx, subtitle, width, startY) {
         ctx.fillStyle = this.subtitleColor;
-        ctx.font = '20px "sans-serif"';
+        ctx.font = '20px "DejaVu Sans"';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -137,7 +137,7 @@ class ImageGenerator {
                     ctx.fillStyle = '#666666';
                     ctx.fillRect(currentX, startY, avatarSize, avatarSize);
                     ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '12px "sans-serif"';
+                    ctx.font = '12px "DejaVu Sans"';
                     ctx.textAlign = 'center';
                     const dn = participant.displayName || participant.username;
                     ctx.fillText(dn.substring(0, 2).toUpperCase(), currentX + avatarSize/2, startY + avatarSize/2 + 4);
@@ -146,7 +146,7 @@ class ImageGenerator {
             }
         }
 
-        ctx.font = '16px "sans-serif"';
+        ctx.font = '16px "DejaVu Sans"';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         const eventLines = this.wrapText(ctx, event.text, width - 40);
@@ -243,7 +243,7 @@ class ImageGenerator {
         ctx.fillRect(0, 0, width, height);
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 32px "sans-serif"';
+        ctx.font = 'bold 32px "DejaVu Sans"';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillText('Fallen Tributes', width / 2, 30);
@@ -275,7 +275,7 @@ class ImageGenerator {
                 ctx.fillStyle = '#333333';
                 ctx.fillRect(x, y, avatarSize, avatarSize);
                 ctx.fillStyle = '#666666';
-                ctx.font = '14px "sans-serif"';
+                ctx.font = '14px "DejaVu Sans"';
                 ctx.textAlign = 'center';
                 const dn = tribute.displayName || tribute.username;
                 ctx.fillText(dn.substring(0, 2).toUpperCase(), x + avatarSize/2, y + avatarSize/2 + 4);
