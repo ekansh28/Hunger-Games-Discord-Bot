@@ -3,8 +3,9 @@ const { execSync } = require('child_process');
 
 try {
     console.log(
-        'FC MATCH:',
-        execSync('fc-match sans-serif').toString()
+        execSync(
+            'find /nix/store -iname "NotoSans-*.ttf" | head -20'
+        ).toString()
     );
 } catch (e) {
     console.error(e);
