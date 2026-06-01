@@ -4,7 +4,7 @@ const { execSync } = require('child_process');
 try {
     console.log(
         execSync(
-            'find /nix/store -iname "NotoSans-*.ttf" | head -20'
+            'find /nix/store -iname "NotoSansMono*.ttf" | head -5'
         ).toString()
     );
 } catch (e) {
