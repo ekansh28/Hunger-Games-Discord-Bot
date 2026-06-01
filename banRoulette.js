@@ -31,7 +31,7 @@ const AVATAR_RADIUS = 110;         // px — radius of each avatar circle
 const BORDER_WIDTH  = 12;           // px — active-turn highlight ring
 const CROSS_WIDTH   = 28;          // px — elimination X stroke width
 
-const TIMEOUT_MS    = 5 * 60 * 1000;   // 5-minute ban penalty
+const TIMEOUT_MS    = 5  * 1000;   // 5-minute ban penalty
 
 // ── Admin ─────────────────────────────────────────────────────
 const BR_ADMIN_ID = '1198980443823947927';
