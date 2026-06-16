@@ -4,14 +4,18 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 const EventLogic = require('./utils/eventLogic');
 const ImageGenerator = require('./utils/imageGenerator');
 const { commandData, handleInteraction: handleBrInteraction } = require('./banRoulette');
+const setupMusic = require('./music');
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates // required for music playback (DisTube/@discordjs/voice)
     ]
 });
+
+const music = setupMusic(client);
 
 const gameStates = new Map();
 const authorizedUsers = new Set([process.env.AUTHORIZED_USER_ID]);
@@ -32,9 +36,9 @@ client.once('clientReady', async () => {
         const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         await rest.put(
             Routes.applicationCommands(client.user.id),
-            { body: commandData }
+            { body: [...commandData, ...music.commandData] }
         );
-        console.log('Registered /br and /brcancel slash commands.');
+        console.log('Registered /br, /brcancel, and music slash commands.');
     } catch (err) {
         console.error('Failed to register slash commands:', err);
     }
@@ -243,6 +247,10 @@ client.on('messageCreate', async (message) => {
 
 client.on('interactionCreate', async (interaction) => {
     try {
+        if (interaction.isChatInputCommand() && music.commandNames.has(interaction.commandName)) {
+            return music.handleInteraction(interaction);
+        }
+
         if (
             (interaction.isChatInputCommand() && (interaction.commandName === 'br' || interaction.commandName === 'brcancel')) ||
             (interaction.isButton() && interaction.customId.startsWith('br_'))
