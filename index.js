@@ -49,9 +49,10 @@ function createBar(percent, length = 25) {
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,      // REQUIRED: privileged intent — enable in Discord Dev Portal too!
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates // required for music playback (DisTube/@discordjs/voice)
+        GatewayIntentBits.GuildVoiceStates,  // required for music playback (DisTube/@discordjs/voice)
     ]
 });
 
@@ -147,147 +148,77 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-if (message.content === '=infectioninfo') {
-    if (!message.guild) return;
+    // ── =help ─────────────────────────────────────────────────────────────────
+    if (message.content === '=help') {
+        const embed = new EmbedBuilder()
+            .setTitle('📖 Bot Command Reference')
+            .setColor('#FFD700')
+            .setDescription('All prefix commands use `=`. Slash commands use `/`.')
+            .addFields(
+                {
+                    name: '🎮 Hunger Games  (`=play`)',
+                    value: [
+                        '`=play` — Open a game lobby *(authorized only)*',
+                        '`=kill <@user|all>` — Eliminate a player mid-game *(admin only)*',
+                        '`=addp <@user|@role>` — Authorize a user/role to host *(admin only)*',
+                        '`=removep <@user|@role>` — Remove host authorization *(admin only)*',
+                    ].join('\n'),
+                    inline: false,
+                },
+                {
+                    name: '🎰 Ban Roulette  (`/br`)',
+                    value: [
+                        '`/br` — Start a Ban Roulette lobby *(authorized only)*',
+                        '`/brcancel` — Cancel the current lobby *(authorized only)*',
+                        'Players join via the button; last one standing wins.',
+                    ].join('\n'),
+                    inline: false,
+                },
+                {
+                    name: '🦠 Virus / Infection',
+                    value: [
+                        '`=infect` — Infect yourself with the virus',
+                        '`=cure [@user|all]` — Cure a user or everyone *(authorized only)*',
+                        '`=infectioninfo` — Full outbreak report with banner image',
+                        '  *Aliases:* `=virusinfo` `=outbreakstats` `=infected` `=infstats` `=infstat` `=vstat` `=vs`',
+                        '`=infectiontree` / `=it` — Visual lineage tree of who infected whom',
+                        '',
+                        '**Spreading:** Infected users spread the virus by @mentioning healthy users.',
+                    ].join('\n'),
+                    inline: false,
+                },
+                {
+                    name: '🎵 Music',
+                    value: 'Use `/play`, `/skip`, `/stop`, `/queue`, `/pause`, `/resume` etc.\n*(See slash command list for full music options)*',
+                    inline: false,
+                },
+                {
+                    name: '🔧 Other',
+                    value: '`=test` — Test file attachment (debug)\n`=help` — Show this message',
+                    inline: false,
+                },
+            )
+            .setFooter({ text: 'Authorized = added via =addp, or the main server admin.' })
+            .setTimestamp();
 
-    const infectedIds = Infection.getInfectedIds(
-        message.guild.id
-    );
-
-    const members = await message.guild.members.fetch();
-
-    const humans = members.filter(
-        member => !member.user.bot
-    );
-
-    const infectedMembers = infectedIds.filter(
-        id => humans.has(id)
-    );
-
-    const infectedCount = infectedMembers.length;
-    const totalPopulation = humans.size;
-    const healthyCount = Math.max(
-        0,
-        totalPopulation - infectedCount
-    );
-
-    const infectionRate =
-        totalPopulation > 0
-            ? (infectedCount / totalPopulation) * 100
-            : 0;
-
-    const healthyRate = 100 - infectionRate;
-
-    const ratio =
-        infectedCount > 0
-            ? `1 in ${Math.round(
-                  totalPopulation / infectedCount
-              )}`
-            : 'No infections';
-
-    let threatLevel = 'LOW';
-    let concentration = 'MINIMAL';
-
-    if (infectionRate >= 75) {
-        threatLevel = 'EXTINCTION EVENT';
-        concentration = 'SEVERE';
-    } else if (infectionRate >= 50) {
-        threatLevel = 'CRITICAL';
-        concentration = 'HEAVY';
-    } else if (infectionRate >= 25) {
-        threatLevel = 'HIGH';
-        concentration = 'MODERATE';
-    } else if (infectionRate >= 10) {
-        threatLevel = 'MODERATE';
-        concentration = 'LIGHT';
+        return message.reply({ embeds: [embed] });
     }
 
-    function createBar(percent, length = 35) {
-        const filled = Math.round(
-            (percent / 100) * length
-        );
-
-        return (
-            '█'.repeat(filled) +
-            '░'.repeat(length - filled)
-        );
-    }
-
-    const infectionBar = createBar(infectionRate);
-    const healthyBar = createBar(healthyRate);
-
-    const infectedList =
-        infectedMembers.length > 0
-            ? infectedMembers
-                  .slice(0, 15)
-                  .map(id => `<@${id}>`)
-                  .join('\n')
-            : 'None';
-
-    const embed = new EmbedBuilder()
-        .setColor(
-            infectionRate >= 75
-                ? '#4B0000'
-                : infectionRate >= 50
-                ? '#8B0000'
-                : infectionRate >= 25
-                ? '#B22222'
-                : '#2F3136'
-        )
-        .setTitle('INFECTION STATUS REPORT')
-        .setDescription(
-            [
-                `Population ........ ${totalPopulation}`,
-                `Infected .......... ${infectedCount}`,
-                `Healthy ........... ${healthyCount}`,
-                '',
-                `Infection Rate .... ${infectionRate.toFixed(2)}%`,
-                `Healthy Rate ...... ${healthyRate.toFixed(2)}%`,
-                `Ratio ............. ${ratio}`,
-                `Threat Level ...... ${threatLevel}`,
-                `Concentration ..... ${concentration}`
-            ].join('\n')
-        )
-        .addFields(
-            {
-                name: 'Infection Concentration',
-                value:
-                    '```' +
-                    '\nINFECTED' +
-                    '\n' +
-                    infectionBar +
-                    '\n' +
-                    `${infectionRate.toFixed(1)}%` +
-                    '\n```'
-            },
-            {
-                name: 'Population Health',
-                value:
-                    '```' +
-                    '\nHEALTHY' +
-                    '\n' +
-                    healthyBar +
-                    '\n' +
-                    `${healthyRate.toFixed(1)}%` +
-                    '\n```'
-            },
-            {
-                name: 'Infected Subjects',
-                value: infectedList
+    // ── Virus commands — delegate to infection.js for all =infectioninfo
+    //    aliases, =infectiontree, =infect, =cure, and spread logic.
+    //    We handle =infect and =cure above in index.js for legacy reasons,
+    //    so only route the info/tree commands here to avoid double-handling.
+    {
+        const prefix = '=';
+        if (message.content.startsWith(prefix)) {
+            const cmd = message.content.slice(prefix.length).trim().split(/\s+/)[0]?.toLowerCase();
+            if (Infection.INFO_ALIASES.has(cmd) || Infection.TREE_ALIASES.has(cmd)) {
+                return Infection.handleMessage(message);
             }
-        )
-        .setFooter({
-            text: `${infectedCount} infected • ${healthyCount} healthy`
-        })
-        .setTimestamp();
+        }
+    }
 
-    await message.reply({
-        embeds: [embed]
-    });
-
-    return;
-}
-
+    // ── Legacy inline =infectioninfo removed — now handled by infection.js above ──
 
     if (message.content === '=cure' || message.content.startsWith('=cure ')) {
         if (!message.guild || !message.member) return;
