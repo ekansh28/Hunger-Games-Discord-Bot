@@ -1,13 +1,13 @@
 // ============================================================
-// infection.js — "Virus" mini-game tracker
+// infection.js — "AIDS" mini-game tracker
 //
 // =infect         : infects yourself; spreads via pings
 // =cure           : (authorized) cure self / mentioned / "all"
 // =infectioninfo  : detailed outbreak report embed
-//   aliases: =virusinfo =outbreakstats =infected =infstats
+//   aliases: =AIDSinfo =outbreakstats =infected =infstats
 //            =infstat =vstat =vs
 //
-// Infected users get VIRUS_ROLE_ID + " (HAS VIRUS)" nickname suffix.
+// Infected users get AIDS_ROLE_ID + " (HAS AIDS)" nickname suffix.
 // State persists to infected.json across restarts.
 // ============================================================
 
@@ -24,12 +24,12 @@ const { generateTree }   = require('./infectionTree');
 //  Constants
 // ─────────────────────────────────────────────────────────────
 const DATA_PATH    = path.join(__dirname, 'infected.json');
-const VIRUS_ROLE_ID   = '1516529671855018004';
+const AIDS_ROLE_ID   = '1516529671855018004';
 const IMMUNE_ROLE_IDS = ['1482031013738709277', '1482030917420712117'];
-const SUFFIX          = ' (HAS VIRUS)';
+const SUFFIX          = ' (HAS AIDS)';
 
 const INFO_ALIASES = new Set([
-    'infectioninfo', 'virusinfo', 'outbreakstats',
+    'infectioninfo', 'AIDSinfo', 'outbreakstats',
     'infected', 'infstats', 'infstat', 'vstat', 'vs',
 ]);
 
@@ -48,7 +48,7 @@ function load() {
 
 function save() {
     try { fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2)); }
-    catch (err) { console.error('[Virus] Failed to save infected.json:', err); }
+    catch (err) { console.error('[AIDS] Failed to save infected.json:', err); }
 }
 
 load();
@@ -103,22 +103,22 @@ async function applyInfection(member, infectedBy = null) {
         const base    = member.displayName || member.user.username;
         let   newNick = `${base}${SUFFIX}`;
         if (newNick.length > 32) newNick = `${base.slice(0, 32 - SUFFIX.length)}${SUFFIX}`;
-        await member.setNickname(newNick, 'HAS VIRUS');
+        await member.setNickname(newNick, 'HAS AIDS');
     } catch (err) {
-        console.error(`[Virus] setNickname failed for ${userId}:`, err?.message || err);
+        console.error(`[AIDS] setNickname failed for ${userId}:`, err?.message || err);
     }
 
     try {
-        const role = member.guild.roles.cache.get(VIRUS_ROLE_ID);
+        const role = member.guild.roles.cache.get(AIDS_ROLE_ID);
         if (role) {
             const bot = member.guild.members.me;
             if (bot.permissions.has(PermissionsBitField.Flags.ManageRoles) &&
                 role.comparePositionTo(bot.roles.highest) < 0) {
-                await member.roles.add(role, 'GOT VIRUS');
+                await member.roles.add(role, 'GOT AIDS');
             }
         }
     } catch (err) {
-        console.error(`[Virus] add role failed for ${userId}:`, err?.message || err);
+        console.error(`[AIDS] add role failed for ${userId}:`, err?.message || err);
     }
 
     return true;
@@ -132,22 +132,22 @@ async function removeInfection(member) {
     const record = data[guildId][userId];
 
     try {
-        await member.setNickname(record.originalNickname ?? null, 'Cured from VIRUS');
+        await member.setNickname(record.originalNickname ?? null, 'Cured from AIDS');
     } catch (err) {
-        console.error(`[Virus] restore nickname failed for ${userId}:`, err?.message || err);
+        console.error(`[AIDS] restore nickname failed for ${userId}:`, err?.message || err);
     }
 
     try {
-        const role = member.guild.roles.cache.get(VIRUS_ROLE_ID);
+        const role = member.guild.roles.cache.get(AIDS_ROLE_ID);
         if (role && member.roles.cache.has(role.id)) {
             const bot = member.guild.members.me;
             if (bot.permissions.has(PermissionsBitField.Flags.ManageRoles) &&
                 role.comparePositionTo(bot.roles.highest) < 0) {
-                await member.roles.remove(role, 'Cured from VIRUS');
+                await member.roles.remove(role, 'Cured from AIDS');
             }
         }
     } catch (err) {
-        console.error(`[Virus] remove role failed for ${userId}:`, err?.message || err);
+        console.error(`[AIDS] remove role failed for ${userId}:`, err?.message || err);
     }
 
     markCured(guildId, userId);
@@ -368,7 +368,7 @@ async function handleInfoCommand(message) {
     try {
         await guild.members.fetch();
     } catch (err) {
-        console.error('[Virus] members.fetch failed:', err?.message || err);
+        console.error('[AIDS] members.fetch failed:', err?.message || err);
     }
 
     // ── Build member sets ────────────────────────────────────
@@ -441,7 +441,7 @@ async function handleInfoCommand(message) {
         });
         bannerAttachment = new AttachmentBuilder(bannerBuf, { name: 'outbreak_banner.png' });
     } catch (err) {
-        console.error('[Virus] Banner generation failed:', err?.message || err);
+        console.error('[AIDS] Banner generation failed:', err?.message || err);
     }
 
     // ── ASCII dashboard block ─────────────────────────────────
@@ -495,7 +495,7 @@ async function handleInfoCommand(message) {
     // ── Build embed ───────────────────────────────────────────
     const embed = new EmbedBuilder()
         .setColor(color)
-        .setTitle('VIRUS OUTBREAK REPORT')
+        .setTitle('AIDS OUTBREAK REPORT')
         .setFooter({ text: `SURVEILLANCE SYSTEM  |  ${guild.name.toUpperCase()}  |  Data reflects current server cache` })
         .setTimestamp();
 
@@ -611,7 +611,7 @@ async function handleTreeCommand(message) {
 
     // Fetch all members into cache
     try { await guild.members.fetch(); }
-    catch (err) { console.error('[Virus] members.fetch failed:', err?.message || err); }
+    catch (err) { console.error('[AIDS] members.fetch failed:', err?.message || err); }
 
     const allMembers = guild.members.cache.filter(m => !m.user.bot);
     const presentIds = [...allMembers.keys()];
@@ -671,7 +671,7 @@ async function handleMessage(message) {
         try {
             await handleTreeCommand(message);
         } catch (err) {
-            console.error('[Virus] handleTreeCommand error:', err);
+            console.error('[AIDS] handleTreeCommand error:', err);
             await message.channel.send('```Failed to generate infection tree. Data may be corrupted.```');
         }
         return;
@@ -682,7 +682,7 @@ async function handleMessage(message) {
         try {
             await handleInfoCommand(message);
         } catch (err) {
-            console.error('[Virus] handleInfoCommand error:', err);
+            console.error('[AIDS] handleInfoCommand error:', err);
             await message.channel.send('```Failed to generate outbreak report. Data may be corrupted.```');
         }
         return;
@@ -693,7 +693,7 @@ async function handleMessage(message) {
         const member = message.member;
         const result = await applyInfection(member);
         if (result) {
-            await message.channel.send(`${member} HAS BEEN INFECTED. The virus spreads.`);
+            await message.channel.send(`${member} HAS BEEN INFECTED. The AIDS spreads.`);
         } else if (isInfected(message.guild.id, member.id)) {
             await message.channel.send('You are already infected.');
         } else {
@@ -752,7 +752,7 @@ async function handleMessage(message) {
 //  Exports
 // ─────────────────────────────────────────────────────────────
 module.exports = {
-    VIRUS_ROLE_ID,
+    AIDS_ROLE_ID,
     IMMUNE_ROLE_IDS,
     INFO_ALIASES,
     TREE_ALIASES,

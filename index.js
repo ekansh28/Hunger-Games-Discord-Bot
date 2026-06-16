@@ -88,7 +88,7 @@ client.on('messageCreate', async (message) => {
                         }
                     }
                 } catch (err) {
-                    console.error('[Virus] spread error:', err);
+                    console.error('[AIDS] spread error:', err);
                 }
             }
             if (message.content === '=test') {
@@ -138,7 +138,7 @@ client.on('messageCreate', async (message) => {
     if (message.content === '=infect') {
         if (!message.guild || !message.member) return;
         if (Infection.isImmune(message.member)) {
-            return message.reply('You are immune to the virus and cannot be infected.');
+            return message.reply('You are immune to the AIDS and cannot be infected.');
         }
         if (Infection.isInfected(message.guild.id, message.member.id)) {
             return message.reply('You are already infected!');
@@ -175,15 +175,15 @@ client.on('messageCreate', async (message) => {
                     inline: false,
                 },
                 {
-                    name: '🦠 Virus / Infection',
+                    name: '🦠 AIDS / Infection',
                     value: [
-                        '`=infect` — Infect yourself with the virus',
+                        '`=infect` — Infect yourself with the AIDS',
                         '`=cure [@user|all]` — Cure a user or everyone *(authorized only)*',
                         '`=infectioninfo` — Full outbreak report with banner image',
-                        '  *Aliases:* `=virusinfo` `=outbreakstats` `=infected` `=infstats` `=infstat` `=vstat` `=vs`',
+                        '  *Aliases:* `=AIDSinfo` `=outbreakstats` `=infected` `=infstats` `=infstat` `=vstat` `=vs`',
                         '`=infectiontree` / `=it` — Visual lineage tree of who infected whom',
                         '',
-                        '**Spreading:** Infected users spread the virus by @mentioning healthy users.',
+                        '**Spreading:** Infected users spread the AIDS by @mentioning healthy users.',
                     ].join('\n'),
                     inline: false,
                 },
@@ -204,7 +204,7 @@ client.on('messageCreate', async (message) => {
         return message.reply({ embeds: [embed] });
     }
 
-    // ── Virus commands — delegate to infection.js for all =infectioninfo
+    // ── AIDS commands — delegate to infection.js for all =infectioninfo
     //    aliases, =infectiontree, =infect, =cure, and spread logic.
     //    We handle =infect and =cure above in index.js for legacy reasons,
     //    so only route the info/tree commands here to avoid double-handling.

@@ -70,7 +70,7 @@ async function generateBanner(stats) {
     ctx.fillStyle = pal.text;
     ctx.font = `bold 28px "${FONT_FAMILY}"`;
     ctx.textAlign = 'left';
-    const titleText = `VIRUS OUTBREAK REPORT`;
+    const titleText = `AIDS OUTBREAK REPORT`;
     ctx.fillText(titleText, 22, 62);
 
     ctx.fillStyle = pal.dim;
