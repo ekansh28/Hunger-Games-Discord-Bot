@@ -16,6 +16,7 @@ const {
 const { createCanvas, loadImage, registerFont } = require('canvas');
 const path = require('path');
 const fs = require('fs');
+const { isAuthorized } = require('./authorization');
 
 // ── Load custom font from fonts/font.ttf (same as imageGenerator) ──
 const FONT_PATH = path.join(__dirname, '..', 'fonts', 'font.ttf');
@@ -38,6 +39,8 @@ const TURN_TIMEOUT_MS = 10 * 1000;     // 10 seconds to act, then auto-eliminate
 const ELIM_ROLE_ID = '1486781924671492266';
 
 // ── Admin ─────────────────────────────────────────────────────
+// BR_ADMIN_ID is always allowed to host, in addition to anyone added
+// via =addp (checked through the shared isAuthorized() helper).
 const BR_ADMIN_ID = '1198980443823947927';
 
 // ── Session store  (channel.id → session) ───────────────────
@@ -352,7 +355,9 @@ async function refreshMessage(session, content = '') {
 
 // ── /br command handler ──────────────────────────────────────
 async function handleBrCommand(interaction) {
-    if (interaction.user.id !== BR_ADMIN_ID) return;
+    if (interaction.user.id !== BR_ADMIN_ID && !isAuthorized(interaction.member || interaction.user)) {
+        return interaction.reply({ content: 'Only authorized users can host Ban Roulette.', flags: 64 });
+    }
     const channelId = interaction.channel.id;
     if (sessions.has(channelId)) {
         return interaction.reply({ content: 'A Ban Roulette session is already active in this channel.', flags: 64 });
@@ -372,6 +377,7 @@ async function handleBrCommand(interaction) {
         roundNumber: 1,
         message: null,
         turnTimeout: null,
+        autoCloseTimeout: null,
     };
     sessions.set(channelId, session);
 
@@ -380,12 +386,31 @@ async function handleBrCommand(interaction) {
     const row = buildRow(session);
     const reply = await interaction.reply({ embeds: [], components: [row], files: [attachment], withResponse: true });
     session.message = reply.resource.message;
+
+    // Auto-close the lobby if nobody joins within 10 seconds.
+    session.autoCloseTimeout = setTimeout(async () => {
+        const freshSession = sessions.get(channelId);
+        if (!freshSession || freshSession.status !== 'lobby') return;
+        if (freshSession.players.length > 0) return;
+
+        sessions.delete(channelId);
+        if (freshSession.message) {
+            try {
+                await freshSession.message.edit({
+                    content: 'Ban Roulette lobby closed automatically — no one joined in time.',
+                    embeds: [],
+                    components: [],
+                    files: [],
+                });
+            } catch { /* message may already be gone */ }
+        }
+    }, 10 * 1000);
 }
 
 // ── /brcancel command handler ────────────────────────────────
 async function handleBrCancel(interaction) {
-    if (interaction.user.id !== BR_ADMIN_ID) {
-        return interaction.reply({ content: 'Only the BR admin can cancel a session.', flags: 64 });
+    if (interaction.user.id !== BR_ADMIN_ID && !isAuthorized(interaction.member || interaction.user)) {
+        return interaction.reply({ content: 'Only the BR admin or authorized hosts can cancel a session.', flags: 64 });
     }
     const channelId = interaction.channel.id;
     const session = sessions.get(channelId);
@@ -393,6 +418,7 @@ async function handleBrCancel(interaction) {
         return interaction.reply({ content: 'No active session in this channel.', flags: 64 });
     }
     clearTurnTimeout(session);
+    if (session.autoCloseTimeout) clearTimeout(session.autoCloseTimeout);
     sessions.delete(channelId);
     if (session.message) await session.message.delete().catch(() => {});
     await interaction.reply('Ban Roulette session cancelled.');
@@ -433,6 +459,10 @@ async function handleJoin(interaction) {
             displayName: interaction.member?.displayName || interaction.user.displayName || interaction.user.username,
             avatarBuffer, eliminated: false,
         });
+        if (session.autoCloseTimeout) {
+            clearTimeout(session.autoCloseTimeout);
+            session.autoCloseTimeout = null;
+        }
         if (session.players.length === session.capacity) {
             session.status = 'playing';
             session.turnIndex = 0;

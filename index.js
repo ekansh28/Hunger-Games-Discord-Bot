@@ -1,10 +1,41 @@
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, PermissionsBitField, REST, Routes } = require('discord.js');
 const EventLogic = require('./utils/eventLogic');
 const ImageGenerator = require('./utils/imageGenerator');
 const { commandData, handleInteraction: handleBrInteraction } = require('./banRoulette');
 const setupMusic = require('./music');
+const { authorizedUsers, authorizedRoles, isAuthorized } = require('./authorization');
+
+// Role given to a user when they lose Ban Roulette (/br). Removed when that
+// user wins either /br or the Hunger Games (=play).
+const HG_ELIM_ROLE_ID = '1486781924671492266';
+
+// Removes HG_ELIM_ROLE_ID from a winning user, if they have it.
+async function removeElimRoleOnWin(guild, userId) {
+    if (!guild || !userId) return;
+    try {
+        const role = guild.roles.cache.get(HG_ELIM_ROLE_ID);
+        if (!role) return;
+        const member = await guild.members.fetch(userId).catch(() => null);
+        if (!member || !member.roles.cache.has(role.id)) return;
+        const botMember = guild.members.me;
+        if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) return;
+        if (role.comparePositionTo(botMember.roles.highest) >= 0) return;
+        await member.roles.remove(role, 'Won Hunger Games');
+    } catch (err) {
+        console.error('Failed to remove elimination role after Hunger Games win:', err);
+    }
+}
+
+// The participants map keeps every entrant (dead or alive) for the duration
+// of the game, so the lone survivor is whoever still has alive === true.
+function findAliveParticipantId(gameState) {
+    for (const [id, p] of gameState.participants.entries()) {
+        if (p.alive) return id;
+    }
+    return null;
+}
 
 const client = new Client({
     intents: [
@@ -18,17 +49,6 @@ const client = new Client({
 const music = setupMusic(client);
 
 const gameStates = new Map();
-const authorizedUsers = new Set([process.env.AUTHORIZED_USER_ID]);
-const authorizedRoles = new Set();
-
-function isAuthorized(memberOrUser) {
-    const userId = memberOrUser.id || memberOrUser.user?.id;
-    if (authorizedUsers.has(userId)) return true;
-    if (memberOrUser.roles && memberOrUser.roles.cache) {
-        return memberOrUser.roles.cache.some(role => authorizedRoles.has(role.id));
-    }
-    return false;
-}
 
 client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
@@ -197,6 +217,7 @@ client.on('messageCreate', async (message) => {
                     setTimeout(async () => {
                         const adminUser = await client.users.fetch(message.author.id);
                         await message.channel.send({ embeds: [new EmbedBuilder().setTitle('ADMIN VICTORY').setDescription(`**${adminUser.displayName || adminUser.username}** wins by admin override!`).setColor('#FFD700').setThumbnail(adminUser.displayAvatarURL()).setTimestamp()] });
+                        await removeElimRoleOnWin(message.guild, message.author.id);
                         gameStates.delete(message.channel.id);
                     }, 6000);
                 }, 6000);
@@ -238,6 +259,7 @@ client.on('messageCreate', async (message) => {
                 const winner = gameState.gameLogic.getWinner();
                 if (winner) {
                     await message.channel.send({ embeds: [new EmbedBuilder().setTitle('VICTORY').setDescription(`**${winner.displayName || winner.username}** has won the Hunger Games!`).setColor('#FFD700').setThumbnail(winner.avatarURL).setTimestamp()] });
+                    await removeElimRoleOnWin(message.guild, findAliveParticipantId(gameState));
                 }
                 gameStates.delete(message.channel.id);
             }, 6000);
@@ -364,6 +386,7 @@ async function startGameSimulation(channel, gameState) {
         .setDescription(`**${winner.displayName || winner.username}** has won the Hunger Games!\n\n*Congratulations, you have survived the arena!*`)
         .setColor('#FFD700').setThumbnail(winner.avatarURL).setTimestamp();
     await channel.send({ embeds: [winnerEmbed] });
+    await removeElimRoleOnWin(channel.guild, findAliveParticipantId(gameState));
     gameStates.delete(channel.id);
 }
 
