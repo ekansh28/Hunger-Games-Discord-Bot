@@ -139,7 +139,6 @@ function setupMusic(client) {
     const distube = new DisTube(client, {
         plugins: [
             // More specific plugins first; yt-dlp (700+ sites) last as a catch-all.
-            new YouTubePlugin(),
             new SpotifyPlugin(
                 process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET
                     ? { api: { clientId: process.env.SPOTIFY_CLIENT_ID, clientSecret: process.env.SPOTIFY_CLIENT_SECRET } }
