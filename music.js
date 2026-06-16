@@ -45,7 +45,7 @@ function requesterMention(songOrPlaylist) {
 function nowPlayingEmbed(queue, song) {
     const embed = new EmbedBuilder()
         .setColor(MUSIC_COLOR)
-        .setAuthor({ name: '🎵 Now Playing' })
+        .setAuthor({ name: 'Now Playing' })
         .setTitle(truncate(song.name || 'Unknown title', 250))
         .addFields(
             { name: 'Duration', value: song.isLive ? 'Live' : (song.formattedDuration || 'Unknown'), inline: true },
@@ -68,7 +68,7 @@ function addedSongEmbed(queue, song) {
     const position = Math.max(queue.songs.indexOf(song), 0) + 1;
     const embed = new EmbedBuilder()
         .setColor(MUSIC_COLOR)
-        .setAuthor({ name: '➕ Added to Queue' })
+        .setAuthor({ name: 'Added to Queue' })
         .setTitle(truncate(song.name || 'Unknown title', 250))
         .addFields(
             { name: 'Duration', value: song.isLive ? 'Live' : (song.formattedDuration || 'Unknown'), inline: true },
@@ -83,7 +83,7 @@ function addedSongEmbed(queue, song) {
 function addedPlaylistEmbed(playlist) {
     const embed = new EmbedBuilder()
         .setColor(MUSIC_COLOR)
-        .setAuthor({ name: '➕ Added Playlist to Queue' })
+        .setAuthor({ name: 'Added Playlist to Queue' })
         .setTitle(truncate(playlist.name || 'Playlist', 250))
         .addFields(
             { name: 'Songs', value: `${playlist.songs.length}`, inline: true },
@@ -166,30 +166,35 @@ function setupMusic(client) {
             queue.textChannel?.send({ embeds: [addedPlaylistEmbed(playlist)] }).catch(() => {});
         })
         .on('finish', queue => {
-            queue.textChannel?.send('📭 Queue finished — add more with `/play`!').catch(() => {});
+            console.log('[Music] Queue finished');
+            console.log('[Music] Songs remaining:', queue.songs.length);
+
+            queue.textChannel?.send(
+                `Queue finished. Songs remaining: ${queue.songs.length}`
+            ).catch(() => {});
         })
         .on('disconnect', queue => {
-            queue.textChannel?.send('👋 Disconnected from the voice channel.').catch(() => {});
+            queue.textChannel?.send('Disconnected from the voice channel.').catch(() => {});
         })
         .on('empty', queue => {
-            queue.textChannel?.send('🚪 Everyone left the voice channel — leaving now.').catch(() => {});
+            queue.textChannel?.send('Everyone left the voice channel, leaving now.').catch(() => {});
         })
         .on('error', (error, queue, song) => {
             console.error('[Music] DisTube error:', error);
             const desc = song ? `Error playing **${song.name}**: ${error.message || error}` : `Playback error: ${error.message || error}`;
-            queue?.textChannel?.send({ embeds: [errorEmbed('⚠️ Playback Error', desc)] }).catch(() => {});
+            queue?.textChannel?.send({ embeds: [errorEmbed('Playback Error', desc)] }).catch(() => {});
         });
 
     // ── Voice-channel / permission helpers ─────────────────────
     function getVoiceChannelOrReply(interaction) {
         const voiceChannel = interaction.member?.voice?.channel;
         if (!voiceChannel) {
-            interaction.reply({ content: '🔇 Join a voice channel first.', flags: 64 });
+            interaction.reply({ content: 'Join a voice channel first.', flags: 64 });
             return null;
         }
         const perms = voiceChannel.permissionsFor(interaction.client.user);
         if (!perms?.has(PermissionsBitField.Flags.Connect) || !perms?.has(PermissionsBitField.Flags.Speak)) {
-            interaction.reply({ content: "🔒 I don't have permission to join and speak in that voice channel.", flags: 64 });
+            interaction.reply({ content: "I don't have permission to join and speak in that voice channel.", flags: 64 });
             return null;
         }
         return voiceChannel;
