@@ -492,110 +492,49 @@ async function handleInfoCommand(message) {
     // ── Encounter probability ─────────────────────────────────
     const encounterPct = infPct.toFixed(2);
 
-    // ── Build embed ───────────────────────────────────────────
+    // ── Build compact embed ───────────────────────────────────
+    const dayRate = temporal.dailyGrowthRate != null
+        ? temporal.dailyGrowthRate.toFixed(1) + '/day'
+        : '?';
+    const ageLine = temporal.outbreakAgeDays != null
+        ? `Day ${temporal.outbreakAgeDays}`
+        : '?';
+
+    // Two compact inline stat blocks
+    const statsBlock = [
+        '```',
+        `Pop      : ${population.toLocaleString()}`,
+        `Infected : ${infectedCount.toLocaleString()} (${infPct.toFixed(1)}%)`,
+        `Healthy  : ${healthyCount.toLocaleString()} (${healthyPct.toFixed(1)}%)`,
+        '```',
+    ].join('\n');
+
+    const threatBlock = [
+        '```',
+        `Threat   : ${threatLevel}`,
+        `Status   : ${outbreakStatus}`,
+        `Growth   : ${dayRate}`,
+        `Age      : ${ageLine}`,
+        '```',
+    ].join('\n');
+
     const embed = new EmbedBuilder()
         .setColor(color)
-        .setTitle('AIDS OUTBREAK REPORT')
-        .setFooter({ text: `SURVEILLANCE SYSTEM  |  ${guild.name.toUpperCase()}  |  Data reflects current server cache` })
+        .setTitle(`AIDS OUTBREAK REPORT  ·  ${guild.name}`)
+        .setDescription(dashboard)
+        .addFields(
+            { name: 'STATISTICS',       value: statsBlock,  inline: true },
+            { name: 'THREAT',           value: threatBlock, inline: true },
+        )
+        .addFields(
+            { name: 'RISK',             value: `\`\`\`${riskAssessment}\`\`\``, inline: false },
+            { name: `INFECTED [${infectedCount}]`, value: subjectsStr || 'None.',    inline: false },
+        )
+        .setFooter({ text: `Patient Zero: ${patientZeroName}  ·  Last: ${mostRecentName}  ·  New today: ${temporal.newToday}` })
         .setTimestamp();
 
-    if (bannerAttachment) {
-        embed.setImage('attachment://outbreak_banner.png');
-    }
+    if (bannerAttachment) embed.setImage('attachment://outbreak_banner.png');
 
-    // Field: Core statistics
-    embed.addFields({
-        name: 'CORE STATISTICS',
-        value: [
-            '```',
-            `${'Total Population'.padEnd(28)}: ${lpad(population.toLocaleString(), 8)}`,
-            `${'Total Infected'.padEnd(28)}: ${lpad(infectedCount.toLocaleString(), 8)}`,
-            `${'Total Healthy'.padEnd(28)}: ${lpad(healthyCount.toLocaleString(), 8)}`,
-            `${'Infection Rate'.padEnd(28)}: ${lpad(infPct.toFixed(2) + '%', 8)}`,
-            `${'Healthy Rate'.padEnd(28)}: ${lpad(healthyPct.toFixed(2) + '%', 8)}`,
-            `${'Infection Ratio'.padEnd(28)}: ${lpad(infectionRatio(infectedCount, population), 8)}`,
-            '```',
-        ].join('\n'),
-        inline: false,
-    });
-
-    // Field: Dashboard
-    embed.addFields({
-        name: 'POPULATION DISTRIBUTION',
-        value: dashboard,
-        inline: false,
-    });
-
-    // Field: Threat assessment (two columns)
-    embed.addFields(
-        {
-            name: 'THREAT ASSESSMENT',
-            value: [
-                '```',
-                `Threat Level   : ${threatLevel}`,
-                `Concentration  : ${concentration}`,
-                `Status         : ${outbreakStatus}`,
-                `Classification : ${classification}`,
-                '```',
-            ].join('\n'),
-            inline: true,
-        },
-        {
-            name: 'OUTBREAK ANALYSIS',
-            value: [
-                '```',
-                `Survival Prob  : ${survivalProbability(infPct)}`,
-                `Contam. Score  : ${contaminationScore(infPct)} / 100`,
-                `Encounter Prob : ${encounterPct}%`,
-                `H:I Ratio      : ${ratioStr.length < 22 ? ratioStr : ratioStr.slice(0, 21)}`,
-                '```',
-            ].join('\n'),
-            inline: true,
-        }
-    );
-
-    // Field: Risk
-    embed.addFields({
-        name: 'RISK ASSESSMENT',
-        value: `\`\`\`${riskAssessment}\`\`\``,
-        inline: false,
-    });
-
-    // Field: Temporal analysis
-    {
-        const dayRate    = temporal.dailyGrowthRate != null
-            ? temporal.dailyGrowthRate.toFixed(2) + ' / day'
-            : 'INSUFFICIENT DATA';
-        const ageLine    = temporal.outbreakAgeDays != null
-            ? `DAY ${temporal.outbreakAgeDays}${temporal.outbreakAgeDays === 0 ? '  (OUTBREAK BEGAN TODAY)' : ''}`
-            : 'UNKNOWN';
-
-        embed.addFields({
-            name: 'TEMPORAL ANALYSIS',
-            value: [
-                '```',
-                `${'Outbreak Age'.padEnd(26)}: ${ageLine}`,
-                `${'Patient Zero'.padEnd(26)}: ${patientZeroName}`,
-                `${'First Infection'.padEnd(26)}: ${fmtDate(temporal.patientZeroTs)}`,
-                `${'Most Recently Infected'.padEnd(26)}: ${mostRecentName}`,
-                `${'Last Infection'.padEnd(26)}: ${fmtDate(temporal.mostRecentTs)}`,
-                `${'New Infections Today'.padEnd(26)}: ${temporal.newToday}`,
-                `${'Growth Rate'.padEnd(26)}: ${dayRate}`,
-                `${'Est. Time to 50% Pop.'.padEnd(26)}: ${temporal.timeToFiftyPct ?? 'INSUFFICIENT DATA'}`,
-                '```',
-            ].join('\n'),
-            inline: false,
-        });
-    }
-
-    // Field: Infected subjects
-    embed.addFields({
-        name: `CONFIRMED INFECTED SUBJECTS  [${infectedCount}]`,
-        value: subjectsStr || 'None.',
-        inline: false,
-    });
-
-    // Send
     const sendOpts = { embeds: [embed] };
     if (bannerAttachment) sendOpts.files = [bannerAttachment];
 
@@ -604,10 +543,20 @@ async function handleInfoCommand(message) {
 
 // ─────────────────────────────────────────────────────────────
 //  Infection tree command
+//  Usage: =it          — auto-scaled tree
+//         =it zoom 2   — zoom in 2× (any positive number)
 // ─────────────────────────────────────────────────────────────
-async function handleTreeCommand(message) {
+async function handleTreeCommand(message, args) {
     const guild = message.guild;
     if (!guild) return;
+
+    // Parse optional zoom: =it zoom <N>  or  =it <N>
+    let zoomScale = 1;
+    if (args.length >= 2) {
+        const zoomArg = args[1]?.toLowerCase() === 'zoom' ? args[2] : args[1];
+        const parsed  = parseFloat(zoomArg);
+        if (!isNaN(parsed) && parsed > 0) zoomScale = Math.min(parsed, 8);
+    }
 
     // Fetch all members into cache
     try { await guild.members.fetch(); }
@@ -627,31 +576,19 @@ async function handleTreeCommand(message) {
         nameMap.set(id, member.displayName || member.user.username);
     }
 
-    const infectedCount = Object.keys(guildData).filter(id => presentIds.includes(id)).length;
-
     const treeBuf = await generateTree({
         infectedData: guildData,
         presentIds,
         nameMap,
         invokerId: message.author.id,
         guildName: guild.name,
+        zoomScale,
     });
 
     const attachment = new AttachmentBuilder(treeBuf, { name: 'infection_tree.png' });
 
-    const embed = new EmbedBuilder()
-        .setColor(0x5b4fcf)
-        .setTitle('INFECTION LINEAGE TREE')
-        .setDescription(
-            infectedCount === 0
-                ? 'No infected subjects. The population is currently clean.'
-                : `Displaying lineage for **${infectedCount}** infected subject(s). Your node is highlighted in purple.`
-        )
-        .setImage('attachment://infection_tree.png')
-        .setFooter({ text: `${guild.name}  |  Boxes without a parent line are patient zeros` })
-        .setTimestamp();
-
-    await message.channel.send({ embeds: [embed], files: [attachment] });
+    // Send image only — no embed wrapper
+    await message.channel.send({ files: [attachment] });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -669,7 +606,7 @@ async function handleMessage(message) {
     // ── =infectiontree / =it ─────────────────────────────────
     if (TREE_ALIASES.has(command)) {
         try {
-            await handleTreeCommand(message);
+            await handleTreeCommand(message, args);
         } catch (err) {
             console.error('[AIDS] handleTreeCommand error:', err);
             await message.channel.send('```Failed to generate infection tree. Data may be corrupted.```');

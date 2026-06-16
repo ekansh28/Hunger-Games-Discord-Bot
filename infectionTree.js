@@ -2,12 +2,15 @@
 // infectionTree.js — Renders an infection lineage tree image
 //
 // Builds a top-down generational tree:
-//   Generation 0 = patient zeros (self-infected, infectedBy: null)
+//   Generation 0 = patient zeros (infectedBy: null / not present)
 //   Generation 1 = infected by gen-0, etc.
 //
-// Styled like the reference screenshot: light-blue boxes,
-// white text, black background, connecting lines between
-// parent and children, "You :3" box highlighted in purple.
+// Features:
+//   - Fully dynamic canvas: grows with the tree, never clips
+//   - Auto-scales down when the tree is large (fits in ~2000px wide)
+//   - Optional zoom scale (1.0 = auto, pass a multiplier to zoom in)
+//   - Proper subtree-width layout: each parent is centred over its children
+//   - Count badge on each box: "(3 infected)" below the name
 // ============================================================
 
 'use strict';
@@ -22,277 +25,395 @@ const FONT_FAMILY = fs.existsSync(FONT_PATH) ? (() => {
     return 'CustomFont';
 })() : 'DejaVu Sans';
 
-// ── Visual constants ─────────────────────────────────────────
-const BG_COLOR        = '#000000';
-const BOX_COLOR       = '#a8d8ea';   // light blue (healthy-ish node)
-const BOX_INFECTED    = '#5b4fcf';   // purple highlight for the command invoker
-const BOX_TEXT        = '#000000';
-const LINE_COLOR      = '#ffffff';
-const TITLE_COLOR     = '#ffffff';
+// ── Visual constants ────────────────────────────────────────
+const BG_COLOR     = '#0d0d0d';
+const BOX_NORMAL   = '#1e3a4a';   // dark teal
+const BOX_ZERO     = '#3a1a1a';   // dark red — patient zeros
+const BOX_INVOKER  = '#3a1a5a';   // purple — the command caller
+const BOX_STROKE_N = '#5ab4d4';   // teal outline
+const BOX_STROKE_Z = '#d45a5a';   // red outline for patient zeros
+const BOX_STROKE_I = '#a06adf';   // purple outline for invoker
+const TEXT_MAIN    = '#e8e8e8';
+const TEXT_SUB     = '#8ab8c8';
+const LINE_COLOR   = '#3a5a6a';
+const TITLE_COLOR  = '#c8e0ea';
+const LEGEND_COLOR = '#888888';
 
-const BOX_H           = 36;
-const BOX_PADDING_X   = 16;         // internal horizontal text padding
-const BOX_MIN_W       = 60;
-const COL_GAP         = 18;         // horizontal gap between sibling boxes
-const ROW_GAP         = 70;         // vertical gap between generations
-const CANVAS_PADDING  = 40;
-const TITLE_HEIGHT    = 50;
+const BOX_H        = 48;   // box height
+const BOX_PAD_X    = 14;   // horizontal inner padding
+const BOX_MIN_W    = 80;
+const BOX_RADIUS   = 6;
+const COL_GAP      = 20;   // gap between sibling boxes
+const ROW_GAP      = 64;   // gap between generations
+const CANVAS_PAD   = 48;
+const TITLE_H      = 56;
+const LEGEND_H     = 28;
+
+// Max canvas width before auto-scale kicks in
+const MAX_AUTO_WIDTH = 2000;
 
 // ─────────────────────────────────────────────────────────────
-//  Build tree data from infected.json data
-//
-//  infectedData shape: { userId: { infectedBy: string|null, ... } }
-//  Returns: { roots: string[], children: Map<string|null, string[]> }
+//  Measure text (singleton context)
+// ─────────────────────────────────────────────────────────────
+let _mc = null;
+function measureText(text, font) {
+    if (!_mc) _mc = createCanvas(10, 10).getContext('2d');
+    _mc.font = font;
+    return _mc.measureText(text).width;
+}
+
+function mainFont(sz)  { return `bold ${sz}px "${FONT_FAMILY}"`; }
+function subFont(sz)   { return `${sz}px "${FONT_FAMILY}"`; }
+
+// ─────────────────────────────────────────────────────────────
+//  Build tree structure
 // ─────────────────────────────────────────────────────────────
 function buildTree(infectedData, presentIds) {
-    // presentIds = Set of userIds actually in the server
     const present = new Set(presentIds);
-
-    // Only include entries whose userId is in the server
     const entries = Object.entries(infectedData).filter(([id]) => present.has(id));
 
     // children map: parentId → [childId, ...]
     const children = new Map();
-    children.set(null, []); // null = roots (no infector, or infector not present)
-
+    children.set(null, []);
     for (const [id] of entries) {
-        const infectedBy = infectedData[id]?.infectedBy ?? null;
-        // If infector is not in the infected+present set, treat as root
-        const parentKey = (infectedBy && present.has(infectedBy) && infectedData[infectedBy])
-            ? infectedBy
-            : null;
-
-        if (!children.has(parentKey)) children.set(parentKey, []);
-        children.get(parentKey).push(id);
+        if (!children.has(id)) children.set(id, []);
+    }
+    for (const [id] of entries) {
+        const parentRaw = infectedData[id]?.infectedBy ?? null;
+        const parent = (parentRaw && present.has(parentRaw) && infectedData[parentRaw])
+            ? parentRaw : null;
+        if (!children.has(parent)) children.set(parent, []);
+        children.get(parent).push(id);
     }
 
     return { roots: children.get(null) || [], children };
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Measure text width with a temporary canvas context
+//  Compute subtree widths (bottom-up) for layout
 // ─────────────────────────────────────────────────────────────
-let _measureCtx = null;
-function measureText(text, fontSize = 14) {
-    if (!_measureCtx) {
-        _measureCtx = createCanvas(100, 100).getContext('2d');
+function computeSubtreeWidths(id, children, boxWidths) {
+    const kids = children.get(id) || [];
+    if (kids.length === 0) {
+        return boxWidths.get(id) || BOX_MIN_W;
     }
-    _measureCtx.font = `${fontSize}px "${FONT_FAMILY}"`;
-    return _measureCtx.measureText(text).width;
-}
-
-function boxWidth(label) {
-    return Math.max(BOX_MIN_W, Math.ceil(measureText(label, 14)) + BOX_PADDING_X * 2);
+    const kidsTotal = kids.reduce((sum, k) => {
+        return sum + computeSubtreeWidths(k, children, boxWidths);
+    }, 0) + (kids.length - 1) * COL_GAP;
+    const self = boxWidths.get(id) || BOX_MIN_W;
+    const result = Math.max(self, kidsTotal);
+    // cache
+    boxWidths.set('__subtree_' + id, result);
+    return result;
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Layout algorithm
-//
-//  Returns: Map<userId, { x, y, w, h, label }>
-//  x/y = top-left corner of box (before adding CANVAS_PADDING)
+//  Assign x positions using subtree widths
+// ─────────────────────────────────────────────────────────────
+function assignX(id, leftEdge, children, boxWidths, positions) {
+    const subtreeW = boxWidths.get('__subtree_' + id) ?? (boxWidths.get(id) || BOX_MIN_W);
+    const self     = boxWidths.get(id) || BOX_MIN_W;
+    // Centre self within the subtree
+    const x = leftEdge + (subtreeW - self) / 2;
+    positions.set(id, { ...( positions.get(id) || {}), x });
+
+    const kids = children.get(id) || [];
+    let cursor = leftEdge;
+    for (const kid of kids) {
+        const kidSubW = boxWidths.get('__subtree_' + kid) ?? (boxWidths.get(kid) || BOX_MIN_W);
+        assignX(kid, cursor, children, boxWidths, positions);
+        cursor += kidSubW + COL_GAP;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Full layout
 // ─────────────────────────────────────────────────────────────
 function layout(roots, children, nameMap, invokerId) {
-    // BFS to get generations
+    // BFS for generations
     const generations = [];
     let current = roots.slice();
-
     while (current.length > 0) {
         generations.push(current);
         const next = [];
         for (const id of current) {
-            const kids = children.get(id) || [];
-            next.push(...kids);
+            next.push(...(children.get(id) || []));
         }
         current = next;
     }
 
-    // Compute box widths per node
-    const nodes = new Map(); // id → { label, w, h, gen, x, y }
-    for (let g = 0; g < generations.length; g++) {
-        for (const id of generations[g]) {
-            const label = nameMap.get(id) || id.slice(0, 6);
-            nodes.set(id, { label, w: boxWidth(label), h: BOX_H, gen: g, x: 0, y: 0 });
-        }
-    }
-
-    // Bottom-up x positioning: each node centered over its children
-    // We do a simple left-to-right pack per row then center parents
-
-    // First pass: position each generation left-to-right
-    for (let g = generations.length - 1; g >= 0; g--) {
-        const gen = generations[g];
-        let cursor = 0;
+    // Count direct children per node (for badge)
+    const directCount = new Map();
+    for (const gen of generations) {
         for (const id of gen) {
-            const node = nodes.get(id);
-            const kids = children.get(id) || [];
-            if (kids.length > 0 && g < generations.length - 1) {
-                // Center over children
-                const leftChild  = nodes.get(kids[0]);
-                const rightChild = nodes.get(kids[kids.length - 1]);
-                const childSpan  = (rightChild.x + rightChild.w) - leftChild.x;
-                const cx = leftChild.x + childSpan / 2 - node.w / 2;
-                node.x = Math.max(cursor, cx);
-            } else {
-                node.x = cursor;
-            }
-            cursor = node.x + node.w + COL_GAP;
-        }
-
-        // If this gen's nodes have shifted right of their children, nudge children right
-        if (g < generations.length - 1) {
-            // Check each parent/child alignment
-            for (const id of gen) {
-                const node = nodes.get(id);
-                const kids = children.get(id) || [];
-                if (!kids.length) continue;
-                const leftChild = nodes.get(kids[0]);
-                const parentCX  = node.x + node.w / 2;
-                const childGroupW = kids.reduce((acc, k) => {
-                    const kn = nodes.get(k); return acc + kn.w;
-                }, 0) + (kids.length - 1) * COL_GAP;
-                const desiredLeft = parentCX - childGroupW / 2;
-                const shift = desiredLeft - leftChild.x;
-                if (shift > 0) {
-                    // Push all kids (and their subtrees) right
-                    nudgeSubtree(kids, shift, nodes, children);
-                }
-            }
+            directCount.set(id, (children.get(id) || []).length);
         }
     }
 
-    // Assign y positions
+    // Box widths
+    const boxWidths = new Map();
+    const FONT_SZ_MAIN = 13;
+    const FONT_SZ_SUB  = 11;
+    for (const gen of generations) {
+        for (const id of gen) {
+            const label = nameMap.get(id) || id.slice(0, 8);
+            const cnt   = directCount.get(id) || 0;
+            const subLabel = cnt > 0 ? `spread to ${cnt}` : '';
+            const mw = measureText(label, mainFont(FONT_SZ_MAIN));
+            const sw = subLabel ? measureText(subLabel, subFont(FONT_SZ_SUB)) : 0;
+            const w  = Math.max(BOX_MIN_W, Math.ceil(Math.max(mw, sw)) + BOX_PAD_X * 2);
+            boxWidths.set(id, w);
+        }
+    }
+
+    // Compute subtree widths bottom-up
+    for (const root of roots) {
+        computeSubtreeWidths(root, children, boxWidths);
+    }
+
+    // Total roots width
+    const totalRootsW = roots.reduce((sum, r) => {
+        return sum + (boxWidths.get('__subtree_' + r) ?? (boxWidths.get(r) || BOX_MIN_W));
+    }, 0) + (roots.length - 1) * COL_GAP;
+
+    // Assign x per root
+    const positions = new Map();
+    let cursor = 0;
+    for (const root of roots) {
+        const rootSubW = boxWidths.get('__subtree_' + root) ?? (boxWidths.get(root) || BOX_MIN_W);
+        assignX(root, cursor, children, boxWidths, positions);
+        cursor += rootSubW + COL_GAP;
+    }
+
+    // Assign y per generation
     for (let g = 0; g < generations.length; g++) {
         const y = g * (BOX_H + ROW_GAP);
         for (const id of generations[g]) {
-            nodes.get(id).y = y;
+            const pos = positions.get(id) || { x: 0 };
+            positions.set(id, { ...pos, y, w: boxWidths.get(id) || BOX_MIN_W, h: BOX_H });
         }
     }
 
-    return nodes;
-}
-
-function nudgeSubtree(ids, shift, nodes, children) {
-    for (const id of ids) {
-        const node = nodes.get(id);
-        node.x += shift;
-        const kids = children.get(id) || [];
-        if (kids.length) nudgeSubtree(kids, shift, nodes, children);
-    }
+    return { positions, generations, directCount, totalRootsW };
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Main render function
+//  Draw rounded rect
+// ─────────────────────────────────────────────────────────────
+function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y,     x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h,     x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y,         x + r, y);
+    ctx.closePath();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Main render
 // ─────────────────────────────────────────────────────────────
 /**
- * @param {object}            opts
- * @param {object}            opts.infectedData   guildId data slice from infected.json
- * @param {string[]}          opts.presentIds     userIds currently in the server (non-bot)
- * @param {Map<string,string>} opts.nameMap        userId → display name
- * @param {string}            opts.invokerId      userId of command caller (highlighted box)
- * @param {string}            opts.guildName
+ * @param {object}             opts
+ * @param {object}             opts.infectedData    guildId data slice
+ * @param {string[]}           opts.presentIds      non-bot member IDs
+ * @param {Map<string,string>} opts.nameMap          userId → display name
+ * @param {string}             opts.invokerId        command caller (highlighted)
+ * @param {string}             opts.guildName
+ * @param {number}             [opts.zoomScale=1]    multiplier applied AFTER auto-scale
  * @returns {Buffer} PNG
  */
-async function generateTree({ infectedData, presentIds, nameMap, invokerId, guildName }) {
+async function generateTree({ infectedData, presentIds, nameMap, invokerId, guildName, zoomScale = 1 }) {
     const { roots, children } = buildTree(infectedData, presentIds);
 
+    // ── Empty state ────────────────────────────────────────
     if (roots.length === 0) {
-        // No infected — render a minimal "clean" image
-        const canvas = createCanvas(500, 160);
+        const W = 560, H = 160;
+        const canvas = createCanvas(W, H);
         const ctx    = canvas.getContext('2d');
         ctx.fillStyle = BG_COLOR;
-        ctx.fillRect(0, 0, 500, 160);
+        ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = TITLE_COLOR;
-        ctx.font = `bold 20px "${FONT_FAMILY}"`;
+        ctx.font = mainFont(18);
         ctx.textAlign = 'center';
-        ctx.fillText('INFECTION LINEAGE TREE', 250, 50);
-        ctx.font = `16px "${FONT_FAMILY}"`;
-        ctx.fillStyle = '#888888';
-        ctx.fillText('No infected subjects. Population is clean.', 250, 100);
+        ctx.fillText('INFECTION LINEAGE TREE', W / 2, 52);
+        ctx.font = subFont(14);
+        ctx.fillStyle = LEGEND_COLOR;
+        ctx.fillText('No infected subjects — population is clean.', W / 2, 100);
         return canvas.toBuffer('image/png');
     }
 
-    const nodes = layout(roots, children, nameMap, invokerId);
+    // ── Layout ─────────────────────────────────────────────
+    const { positions, generations, directCount, totalRootsW } = layout(roots, children, nameMap, invokerId);
 
-    // Canvas size
+    // Canvas natural size
     let maxX = 0, maxY = 0;
-    for (const [, n] of nodes) {
+    for (const [, n] of positions) {
         maxX = Math.max(maxX, n.x + n.w);
         maxY = Math.max(maxY, n.y + n.h);
     }
 
-    const W = maxX + CANVAS_PADDING * 2;
-    const H = maxY + CANVAS_PADDING * 2 + TITLE_HEIGHT;
+    const naturalW = maxX + CANVAS_PAD * 2;
+    const naturalH = maxY + CANVAS_PAD * 2 + TITLE_H + LEGEND_H;
+
+    // Auto-scale: shrink so canvas never exceeds MAX_AUTO_WIDTH
+    const autoScale = naturalW > MAX_AUTO_WIDTH ? MAX_AUTO_WIDTH / naturalW : 1;
+    const scale     = autoScale * zoomScale;
+
+    const W = Math.ceil(naturalW * scale);
+    const H = Math.ceil(naturalH * scale);
 
     const canvas = createCanvas(W, H);
     const ctx    = canvas.getContext('2d');
 
-    // Background
+    // Apply uniform scale
+    ctx.scale(scale, scale);
+
+    // ── Background ─────────────────────────────────────────
     ctx.fillStyle = BG_COLOR;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, naturalW, naturalH);
 
-    // Title
+    // Subtle grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < naturalW; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, naturalH); ctx.stroke();
+    }
+    for (let y = 0; y < naturalH; y += 40) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(naturalW, y); ctx.stroke();
+    }
+
+    // ── Title ──────────────────────────────────────────────
     ctx.fillStyle = TITLE_COLOR;
-    ctx.font = `bold 18px "${FONT_FAMILY}"`;
+    ctx.font = mainFont(18);
     ctx.textAlign = 'center';
-    ctx.fillText(`INFECTION LINEAGE TREE  —  ${guildName.toUpperCase()}`, W / 2, 28);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`INFECTION LINEAGE TREE  —  ${guildName.toUpperCase()}`, naturalW / 2, TITLE_H / 2);
 
-    const offsetX = CANVAS_PADDING;
-    const offsetY = CANVAS_PADDING + TITLE_HEIGHT;
+    // Underline
+    ctx.strokeStyle = '#2a4a5a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(CANVAS_PAD, TITLE_H - 4);
+    ctx.lineTo(naturalW - CANVAS_PAD, TITLE_H - 4);
+    ctx.stroke();
 
-    // Draw connecting lines first (under boxes)
-    ctx.strokeStyle = LINE_COLOR;
-    ctx.lineWidth   = 1.5;
+    const offsetX = CANVAS_PAD;
+    const offsetY = CANVAS_PAD + TITLE_H;
 
-    for (const [parentId, node] of nodes) {
+    // ── Connecting lines ───────────────────────────────────
+    ctx.lineWidth = 1.5;
+
+    for (const [parentId, node] of positions) {
         const kids = children.get(parentId) || [];
         for (const kidId of kids) {
-            const kid = nodes.get(kidId);
+            const kid = positions.get(kidId);
             if (!kid) continue;
 
-            const px = offsetX + node.x + node.w / 2;
-            const py = offsetY + node.y + node.h;
-            const kx = offsetX + kid.x  + kid.w  / 2;
-            const ky = offsetY + kid.y;
+            const px  = offsetX + node.x + node.w / 2;
+            const py  = offsetY + node.y + node.h;
+            const kx  = offsetX + kid.x  + kid.w  / 2;
+            const ky  = offsetY + kid.y;
+            const mid = py + (ky - py) * 0.45;
 
-            const midY = py + (ky - py) / 2;
+            ctx.strokeStyle = LINE_COLOR;
             ctx.beginPath();
             ctx.moveTo(px, py);
-            ctx.lineTo(px, midY);
-            ctx.lineTo(kx, midY);
-            ctx.lineTo(kx, ky);
+            ctx.bezierCurveTo(px, mid, kx, mid, kx, ky);
             ctx.stroke();
+
+            // Small arrow tip
+            ctx.fillStyle = LINE_COLOR;
+            ctx.beginPath();
+            ctx.moveTo(kx, ky);
+            ctx.lineTo(kx - 4, ky - 7);
+            ctx.lineTo(kx + 4, ky - 7);
+            ctx.closePath();
+            ctx.fill();
         }
     }
 
-    // Draw boxes
-    for (const [id, node] of nodes) {
+    // ── Boxes ──────────────────────────────────────────────
+    const FONT_SZ_MAIN = 13;
+    const FONT_SZ_SUB  = 11;
+
+    for (const [id, node] of positions) {
         const bx = offsetX + node.x;
         const by = offsetY + node.y;
+        const isInvoker   = id === invokerId;
+        const isPatientZ  = !infectedData[id]?.infectedBy || !presentIds.includes(infectedData[id]?.infectedBy) || !infectedData[infectedData[id]?.infectedBy];
 
-        const isInvoker = id === invokerId;
-        ctx.fillStyle = isInvoker ? BOX_INFECTED : BOX_COLOR;
+        const fill   = isInvoker ? BOX_INVOKER : (isPatientZ ? BOX_ZERO : BOX_NORMAL);
+        const stroke = isInvoker ? BOX_STROKE_I : (isPatientZ ? BOX_STROKE_Z : BOX_STROKE_N);
 
-        // Rounded rect
-        const r = 4;
-        ctx.beginPath();
-        ctx.moveTo(bx + r, by);
-        ctx.lineTo(bx + node.w - r, by);
-        ctx.quadraticCurveTo(bx + node.w, by, bx + node.w, by + r);
-        ctx.lineTo(bx + node.w, by + node.h - r);
-        ctx.quadraticCurveTo(bx + node.w, by + node.h, bx + node.w - r, by + node.h);
-        ctx.lineTo(bx + r, by + node.h);
-        ctx.quadraticCurveTo(bx, by + node.h, bx, by + node.h - r);
-        ctx.lineTo(bx, by + r);
-        ctx.quadraticCurveTo(bx, by, bx + r, by);
-        ctx.closePath();
+        // Shadow
+        ctx.shadowColor   = stroke + '55';
+        ctx.shadowBlur    = 8;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 2;
+
+        ctx.fillStyle = fill;
+        roundRect(ctx, bx, by, node.w, node.h, BOX_RADIUS);
         ctx.fill();
 
+        ctx.shadowBlur = 0;
+
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth   = isInvoker ? 2 : 1.5;
+        roundRect(ctx, bx, by, node.w, node.h, BOX_RADIUS);
+        ctx.stroke();
+
         // Label
-        ctx.fillStyle = isInvoker ? '#ffffff' : BOX_TEXT;
-        ctx.font = `14px "${FONT_FAMILY}"`;
-        ctx.textAlign = 'center';
+        const label    = nameMap.get(id) || id.slice(0, 8);
+        const cnt      = directCount.get(id) || 0;
+        const subLabel = cnt > 0 ? `spread to ${cnt}` : (isPatientZ ? 'patient zero' : '');
+
+        ctx.textAlign   = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(node.label, bx + node.w / 2, by + node.h / 2);
+        ctx.fillStyle   = TEXT_MAIN;
+        ctx.font        = mainFont(FONT_SZ_MAIN);
+
+        const cy = by + node.h / 2;
+        if (subLabel) {
+            ctx.fillText(label, bx + node.w / 2, cy - 7);
+            ctx.fillStyle = TEXT_SUB;
+            ctx.font      = subFont(FONT_SZ_SUB);
+            ctx.fillText(subLabel, bx + node.w / 2, cy + 8);
+        } else {
+            ctx.fillText(label, bx + node.w / 2, cy);
+        }
+    }
+
+    // ── Legend ─────────────────────────────────────────────
+    ctx.shadowBlur = 0;
+    const legendY = naturalH - LEGEND_H + 6;
+    const items = [
+        { color: BOX_STROKE_Z, label: 'Patient Zero' },
+        { color: BOX_STROKE_I, label: 'You'          },
+        { color: BOX_STROKE_N, label: 'Infected'     },
+    ];
+    let lx = CANVAS_PAD;
+    ctx.font = subFont(10);
+    ctx.textBaseline = 'middle';
+    for (const item of items) {
+        ctx.fillStyle = item.color;
+        ctx.fillRect(lx, legendY + 2, 10, 10);
+        ctx.fillStyle = LEGEND_COLOR;
+        ctx.textAlign = 'left';
+        ctx.fillText(item.label, lx + 14, legendY + 7);
+        lx += 14 + ctx.measureText(item.label).width + 24;
+    }
+
+    // Scale hint if auto-scaled
+    if (scale < 0.99) {
+        ctx.fillStyle = LEGEND_COLOR;
+        ctx.font = subFont(10);
+        ctx.textAlign = 'right';
+        ctx.fillText(`auto-scaled to ${Math.round(scale * 100)}%  |  use =it zoom <N> for bigger`, naturalW - CANVAS_PAD, legendY + 7);
     }
 
     return canvas.toBuffer('image/png');
