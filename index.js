@@ -135,7 +135,7 @@ client.on('messageCreate', async (message) => {
             return message.reply('You are already infected!');
         }
         await Infection.applyInfection(message.member);
-        await message.channel.send(`${message.member.toString()} HAS BEEN AFFECTED WITH VIRUS!`);
+        await message.channel.send(`${message.member.toString()} HAS BEEN INFECTED WITH AIDS!`);
         return;
     }
 

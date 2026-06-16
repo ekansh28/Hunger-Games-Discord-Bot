@@ -21,7 +21,7 @@ const DATA_PATH = path.join(__dirname, 'infected.json');
 
 const VIRUS_ROLE_ID = '1516529671855018004';
 const IMMUNE_ROLE_IDS = ['1482031013738709277', '1482030917420712117'];
-const SUFFIX = ' (HAS VIRUS)';
+const SUFFIX = ' (HAS AIDS)';
 
 // Shape on disk: { "<guildId>": { "<userId>": { "originalNickname": string|null } } }
 let data = {};
@@ -85,7 +85,7 @@ async function applyInfection(member) {
         const base = member.displayName || member.user.username;
         let newNick = `${base}${SUFFIX}`;
         if (newNick.length > 32) newNick = `${base.slice(0, 32 - SUFFIX.length)}${SUFFIX}`;
-        await member.setNickname(newNick, 'Infected with virus');
+        await member.setNickname(newNick, 'HAS AIDS');
     } catch (err) {
         console.error(`[Virus] Failed to set nickname for ${userId}:`, err?.message || err);
     }
@@ -97,7 +97,7 @@ async function applyInfection(member) {
             const botMember = guild.members.me;
             if (botMember.permissions.has(PermissionsBitField.Flags.ManageRoles) &&
                 role.comparePositionTo(botMember.roles.highest) < 0) {
-                await member.roles.add(role, 'Infected with virus');
+                await member.roles.add(role, 'GOT AIDS');
             }
         }
     } catch (err) {
@@ -116,7 +116,7 @@ async function removeInfection(member) {
     const record = data[guildId][userId];
 
     try {
-        await member.setNickname(record.originalNickname ?? null, 'Cured from virus');
+        await member.setNickname(record.originalNickname ?? null, 'Cured from AIDS');
     } catch (err) {
         console.error(`[Virus] Failed to restore nickname for ${userId}:`, err?.message || err);
     }
@@ -128,7 +128,7 @@ async function removeInfection(member) {
             const botMember = guild.members.me;
             if (botMember.permissions.has(PermissionsBitField.Flags.ManageRoles) &&
                 role.comparePositionTo(botMember.roles.highest) < 0) {
-                await member.roles.remove(role, 'Cured from virus');
+                await member.roles.remove(role, 'Cured from AIDS');
             }
         }
     } catch (err) {
