@@ -6,6 +6,7 @@ const ImageGenerator = require('./utils/imageGenerator');
 const { commandData, handleInteraction: handleBrInteraction } = require('./banRoulette');
 const setupMusic = require('./music');
 const { authorizedUsers, authorizedRoles, isAuthorized } = require('./authorization');
+const Infection = require('./infection');
 
 // Role given to a user when they lose Ban Roulette (/br). Removed when that
 // user wins either /br or the Hunger Games (=play).
@@ -66,6 +67,21 @@ client.once('clientReady', async () => {
 
 
 client.on('messageCreate', async (message) => {
+            if (message.guild && !message.author.bot && message.member && message.mentions.members.size > 0) {
+                try {
+                    if (Infection.isInfected(message.guild.id, message.member.id)) {
+                        for (const [mentionedId, mentionedMember] of message.mentions.members) {
+                            if (mentionedId === message.member.id) continue;
+                            if (mentionedMember.user.bot) continue;
+                            if (Infection.isInfected(message.guild.id, mentionedId)) continue;
+                            if (Infection.isImmune(mentionedMember)) continue;
+                            await Infection.applyInfection(mentionedMember);
+                        }
+                    }
+                } catch (err) {
+                    console.error('[Virus] spread error:', err);
+                }
+            }
             if (message.content === '=test') {
                 const buffer = Buffer.from('Hello World');
 
@@ -108,6 +124,67 @@ client.on('messageCreate', async (message) => {
         );
 
         await message.reply({ embeds: [embed], components: [row] });
+    }
+
+    if (message.content === '=infect') {
+        if (!message.guild || !message.member) return;
+        if (Infection.isImmune(message.member)) {
+            return message.reply('You are immune to the virus and cannot be infected.');
+        }
+        if (Infection.isInfected(message.guild.id, message.member.id)) {
+            return message.reply('You are already infected!');
+        }
+        await Infection.applyInfection(message.member);
+        await message.channel.send(`${message.member.toString()} HAS BEEN AFFECTED WITH VIRUS!`);
+        return;
+    }
+
+    if (message.content === '=cure' || message.content.startsWith('=cure ')) {
+        if (!message.guild || !message.member) return;
+        if (!isAuthorized(message.member)) {
+            return message.reply('Only authorized users can use this command.');
+        }
+
+        const args = message.content.slice(5).trim();
+
+        if (args.toLowerCase() === 'all') {
+            const ids = Infection.getInfectedIds(message.guild.id);
+            if (ids.length === 0) return message.reply('No one is currently infected.');
+            let count = 0;
+            for (const id of ids) {
+                const member = await message.guild.members.fetch(id).catch(() => null);
+                if (member) {
+                    if (await Infection.removeInfection(member)) count++;
+                } else {
+                    Infection.markCured(message.guild.id, id);
+                    count++;
+                }
+            }
+            return message.reply(`Cured ${count} infected user(s).`);
+        }
+
+        let targets = [];
+        if (message.mentions.members.size > 0) {
+            targets = [...message.mentions.members.values()];
+        } else if (args === '') {
+            targets = [message.member];
+        } else if (/^\d{17,19}$/.test(args)) {
+            const m = await message.guild.members.fetch(args).catch(() => null);
+            if (m) targets = [m];
+        }
+
+        if (targets.length === 0) return message.reply('User not found.');
+
+        const curedNames = [];
+        for (const m of targets) {
+            if (Infection.isInfected(message.guild.id, m.id)) {
+                await Infection.removeInfection(m);
+                curedNames.push(m.displayName || m.user.username);
+            }
+        }
+
+        if (curedNames.length === 0) return message.reply('That user is not infected.');
+        return message.reply(`Cured: ${curedNames.join(', ')}`);
     }
 
     if (message.content.startsWith('=addp ')) {
