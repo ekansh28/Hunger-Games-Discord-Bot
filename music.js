@@ -150,7 +150,6 @@ function setupMusic(client) {
         ],
         emitNewSongOnly: true,
         savePreviousSongs: true,
-        emptyCooldown: 30,       // ✅ valid – bot leaves after 30s of emptiness
         nsfw: false,
     });
 
