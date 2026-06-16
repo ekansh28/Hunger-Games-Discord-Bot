@@ -1,18 +1,9 @@
 // ============================================================
 // infectionTree.js — Renders an infection lineage tree image
 //
-// Builds a top-down generational tree:
-//   Generation 0 = patient zeros (infectedBy: null / not present)
-//   Generation 1 = infected by gen-0, etc.
-//
-// Features:
-//   - Fully dynamic canvas: grows with the tree, never clips
-//   - Auto-scales down when the tree is large (fits in ~2000px wide)
-//   - Optional zoom scale (1.0 = auto, pass a multiplier to zoom in)
-//   - Proper subtree-width layout: each parent is centred over its children
-//   - Count badge on each box: "(3 infected)" below the name
+// Transparent background, black wire connectors, no decorative
+// text — only user name boxes and their hierarchy lines.
 // ============================================================
-
 'use strict';
 
 const { createCanvas, registerFont } = require('canvas');
@@ -26,34 +17,27 @@ const FONT_FAMILY = fs.existsSync(FONT_PATH) ? (() => {
 })() : 'DejaVu Sans';
 
 // ── Visual constants ────────────────────────────────────────
-const BG_COLOR     = '#0d0d0d';
 const BOX_NORMAL   = '#1e3a4a';   // dark teal
-const BOX_ZERO     = '#3a1a1a';   // dark red — patient zeros
-const BOX_INVOKER  = '#3a1a5a';   // purple — the command caller
+const BOX_ZERO     = '#3a1a1a';   // dark red  — patient zeros
+const BOX_INVOKER  = '#3a1a5a';   // purple    — command caller
 const BOX_STROKE_N = '#5ab4d4';   // teal outline
-const BOX_STROKE_Z = '#d45a5a';   // red outline for patient zeros
-const BOX_STROKE_I = '#a06adf';   // purple outline for invoker
-const TEXT_MAIN    = '#e8e8e8';
-const TEXT_SUB     = '#8ab8c8';
-const LINE_COLOR   = '#3a5a6a';
-const TITLE_COLOR  = '#c8e0ea';
-const LEGEND_COLOR = '#888888';
+const BOX_STROKE_Z = '#d45a5a';   // red outline  — patient zeros
+const BOX_STROKE_I = '#a06adf';   // purple outline — invoker
+const TEXT_COLOR   = '#ffffff';
+const LINE_COLOR   = '#000000';   // black wire
 
-const BOX_H        = 48;   // box height
-const BOX_PAD_X    = 14;   // horizontal inner padding
-const BOX_MIN_W    = 80;
-const BOX_RADIUS   = 6;
-const COL_GAP      = 20;   // gap between sibling boxes
-const ROW_GAP      = 64;   // gap between generations
-const CANVAS_PAD   = 48;
-const TITLE_H      = 56;
-const LEGEND_H     = 28;
+const BOX_H        = 36;
+const BOX_PAD_X    = 14;
+const BOX_MIN_W    = 70;
+const BOX_RADIUS   = 5;
+const COL_GAP      = 22;
+const ROW_GAP      = 56;
+const CANVAS_PAD   = 32;
 
-// Max canvas width before auto-scale kicks in
 const MAX_AUTO_WIDTH = 2000;
 
 // ─────────────────────────────────────────────────────────────
-//  Measure text (singleton context)
+//  Measure text
 // ─────────────────────────────────────────────────────────────
 let _mc = null;
 function measureText(text, font) {
@@ -62,8 +46,7 @@ function measureText(text, font) {
     return _mc.measureText(text).width;
 }
 
-function mainFont(sz)  { return `bold ${sz}px "${FONT_FAMILY}"`; }
-function subFont(sz)   { return `${sz}px "${FONT_FAMILY}"`; }
+function mainFont(sz) { return `bold ${sz}px "${FONT_FAMILY}"`; }
 
 // ─────────────────────────────────────────────────────────────
 //  Build tree structure
@@ -71,17 +54,15 @@ function subFont(sz)   { return `${sz}px "${FONT_FAMILY}"`; }
 function buildTree(infectedData, presentIds) {
     const present = new Set(presentIds);
     const entries = Object.entries(infectedData).filter(([id]) => present.has(id));
-
-    // children map: parentId → [childId, ...]
     const children = new Map();
     children.set(null, []);
+    
     for (const [id] of entries) {
         if (!children.has(id)) children.set(id, []);
     }
     for (const [id] of entries) {
-        const parentRaw = infectedData[id]?.infectedBy ?? null;
-        const parent = (parentRaw && present.has(parentRaw) && infectedData[parentRaw])
-            ? parentRaw : null;
+        const raw    = infectedData[id]?.infectedBy ?? null;
+        const parent = (raw && present.has(raw) && infectedData[raw]) ? raw : null;
         if (!children.has(parent)) children.set(parent, []);
         children.get(parent).push(id);
     }
@@ -90,102 +71,80 @@ function buildTree(infectedData, presentIds) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Compute subtree widths (bottom-up) for layout
+//  Subtree widths (bottom-up, cached with prefix key)
 // ─────────────────────────────────────────────────────────────
-function computeSubtreeWidths(id, children, boxWidths) {
+function computeSubtreeWidth(id, children, boxWidths) {
+    const cacheKey = '_sw' + id;
+    if (boxWidths.has(cacheKey)) return boxWidths.get(cacheKey);
+    
     const kids = children.get(id) || [];
-    if (kids.length === 0) {
-        return boxWidths.get(id) || BOX_MIN_W;
-    }
-    const kidsTotal = kids.reduce((sum, k) => {
-        return sum + computeSubtreeWidths(k, children, boxWidths);
-    }, 0) + (kids.length - 1) * COL_GAP;
     const self = boxWidths.get(id) || BOX_MIN_W;
+    if (kids.length === 0) {
+        boxWidths.set(cacheKey, self);
+        return self;
+    }
+    
+    const kidsTotal = kids.reduce((s, k) => s + computeSubtreeWidth(k, children, boxWidths), 0) + (kids.length - 1) * COL_GAP;
     const result = Math.max(self, kidsTotal);
-    // cache
-    boxWidths.set('__subtree_' + id, result);
+    boxWidths.set(cacheKey, result);
     return result;
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Assign x positions using subtree widths
+//  Assign X positions
 // ─────────────────────────────────────────────────────────────
 function assignX(id, leftEdge, children, boxWidths, positions) {
-    const subtreeW = boxWidths.get('__subtree_' + id) ?? (boxWidths.get(id) || BOX_MIN_W);
+    const subtreeW = computeSubtreeWidth(id, children, boxWidths);
     const self     = boxWidths.get(id) || BOX_MIN_W;
-    // Centre self within the subtree
-    const x = leftEdge + (subtreeW - self) / 2;
-    positions.set(id, { ...( positions.get(id) || {}), x });
-
+    const x        = leftEdge + (subtreeW - self) / 2;
+    const existing = positions.get(id) || {};
+    positions.set(id, { ...existing, x });
+    
     const kids = children.get(id) || [];
     let cursor = leftEdge;
     for (const kid of kids) {
-        const kidSubW = boxWidths.get('__subtree_' + kid) ?? (boxWidths.get(kid) || BOX_MIN_W);
         assignX(kid, cursor, children, boxWidths, positions);
-        cursor += kidSubW + COL_GAP;
+        cursor += computeSubtreeWidth(kid, children, boxWidths) + COL_GAP;
     }
 }
 
 // ─────────────────────────────────────────────────────────────
 //  Full layout
 // ─────────────────────────────────────────────────────────────
-function layout(roots, children, nameMap, invokerId) {
-    // BFS for generations
+function layout(roots, children, nameMap) {
+    // BFS generations
     const generations = [];
     let current = roots.slice();
     while (current.length > 0) {
         generations.push(current);
         const next = [];
-        for (const id of current) {
-            next.push(...(children.get(id) || []));
-        }
+        for (const id of current) next.push(...(children.get(id) || []));
         current = next;
     }
-
-    // Count direct children per node (for badge)
-    const directCount = new Map();
-    for (const gen of generations) {
-        for (const id of gen) {
-            directCount.set(id, (children.get(id) || []).length);
-        }
-    }
-
-    // Box widths
+    
+    // Box widths from label text
     const boxWidths = new Map();
-    const FONT_SZ_MAIN = 13;
-    const FONT_SZ_SUB  = 11;
+    const FSZMAIN = 13;
     for (const gen of generations) {
         for (const id of gen) {
             const label = nameMap.get(id) || id.slice(0, 8);
-            const cnt   = directCount.get(id) || 0;
-            const subLabel = cnt > 0 ? `spread to ${cnt}` : '';
-            const mw = measureText(label, mainFont(FONT_SZ_MAIN));
-            const sw = subLabel ? measureText(subLabel, subFont(FONT_SZ_SUB)) : 0;
-            const w  = Math.max(BOX_MIN_W, Math.ceil(Math.max(mw, sw)) + BOX_PAD_X * 2);
+            const w = Math.max(BOX_MIN_W, Math.ceil(measureText(label, mainFont(FSZMAIN))) + BOX_PAD_X * 2);
             boxWidths.set(id, w);
         }
     }
 
-    // Compute subtree widths bottom-up
-    for (const root of roots) {
-        computeSubtreeWidths(root, children, boxWidths);
-    }
+    // Pre-compute all subtree widths bottom-up
+    for (const root of roots) computeSubtreeWidth(root, children, boxWidths);
 
-    // Total roots width
-    const totalRootsW = roots.reduce((sum, r) => {
-        return sum + (boxWidths.get('__subtree_' + r) ?? (boxWidths.get(r) || BOX_MIN_W));
-    }, 0) + (roots.length - 1) * COL_GAP;
-
-    // Assign x per root
+    // Assign X per root
     const positions = new Map();
     let cursor = 0;
     for (const root of roots) {
-        const rootSubW = boxWidths.get('__subtree_' + root) ?? (boxWidths.get(root) || BOX_MIN_W);
         assignX(root, cursor, children, boxWidths, positions);
-        cursor += rootSubW + COL_GAP;
+        cursor += computeSubtreeWidth(root, children, boxWidths) + COL_GAP;
     }
 
-    // Assign y per generation
+    // Assign Y per generation
     for (let g = 0; g < generations.length; g++) {
         const y = g * (BOX_H + ROW_GAP);
         for (const id of generations[g]) {
@@ -194,11 +153,11 @@ function layout(roots, children, nameMap, invokerId) {
         }
     }
 
-    return { positions, generations, directCount, totalRootsW };
+    return positions;
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Draw rounded rect
+//  Rounded rect path
 // ─────────────────────────────────────────────────────────────
 function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
@@ -218,204 +177,142 @@ function roundRect(ctx, x, y, w, h, r) {
 //  Main render
 // ─────────────────────────────────────────────────────────────
 /**
- * @param {object}             opts
- * @param {object}             opts.infectedData    guildId data slice
- * @param {string[]}           opts.presentIds      non-bot member IDs
- * @param {Map<string,string>} opts.nameMap          userId → display name
- * @param {string}             opts.invokerId        command caller (highlighted)
- * @param {string}             opts.guildName
- * @param {number}             [opts.zoomScale=1]    multiplier applied AFTER auto-scale
- * @returns {Buffer} PNG
- */
+@param {object}             opts
+@param {object}             opts.infectedData
+@param {string[]}           opts.presentIds
+@param {Map<string,string>} opts.nameMap
+@param {string}             opts.invokerId
+@param {string}             opts.guildName      (unused — no title rendered)
+@param {number}             [opts.zoomScale=1]
+@returns {Buffer} PNG with transparent background
+*/
 async function generateTree({ infectedData, presentIds, nameMap, invokerId, guildName, zoomScale = 1 }) {
     const { roots, children } = buildTree(infectedData, presentIds);
-
+    
     // ── Empty state ────────────────────────────────────────
     if (roots.length === 0) {
-        const W = 560, H = 160;
-        const canvas = createCanvas(W, H);
-        const ctx    = canvas.getContext('2d');
-        ctx.fillStyle = BG_COLOR;
-        ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = TITLE_COLOR;
-        ctx.font = mainFont(18);
-        ctx.textAlign = 'center';
-        ctx.fillText('INFECTION LINEAGE TREE', W / 2, 52);
-        ctx.font = subFont(14);
-        ctx.fillStyle = LEGEND_COLOR;
-        ctx.fillText('No infected subjects — population is clean.', W / 2, 100);
-        return canvas.toBuffer('image/png');
+        // Transparent 1×1 — caller should handle "no infected" messaging
+        return createCanvas(1, 1).toBuffer('image/png');
     }
-
+    
     // ── Layout ─────────────────────────────────────────────
-    const { positions, generations, directCount, totalRootsW } = layout(roots, children, nameMap, invokerId);
-
-    // Canvas natural size
+    const positions = layout(roots, children, nameMap);
     let maxX = 0, maxY = 0;
     for (const [, n] of positions) {
         maxX = Math.max(maxX, n.x + n.w);
         maxY = Math.max(maxY, n.y + n.h);
     }
-
+    
     const naturalW = maxX + CANVAS_PAD * 2;
-    const naturalH = maxY + CANVAS_PAD * 2 + TITLE_H + LEGEND_H;
-
-    // Auto-scale: shrink so canvas never exceeds MAX_AUTO_WIDTH
+    const naturalH = maxY + CANVAS_PAD * 2;
+    
     const autoScale = naturalW > MAX_AUTO_WIDTH ? MAX_AUTO_WIDTH / naturalW : 1;
-    const scale     = autoScale * zoomScale;
-
+    const scale     = autoScale * Math.max(0.1, zoomScale);
+    
     const W = Math.ceil(naturalW * scale);
     const H = Math.ceil(naturalH * scale);
-
+    
     const canvas = createCanvas(W, H);
     const ctx    = canvas.getContext('2d');
-
-    // Apply uniform scale
+    
+    // Transparent — do NOT fill background at all
     ctx.scale(scale, scale);
-
-    // ── Background ─────────────────────────────────────────
-    ctx.fillStyle = BG_COLOR;
-    ctx.fillRect(0, 0, naturalW, naturalH);
-
-    // Subtle grid lines
-    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < naturalW; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, naturalH); ctx.stroke();
-    }
-    for (let y = 0; y < naturalH; y += 40) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(naturalW, y); ctx.stroke();
-    }
-
-    // ── Title ──────────────────────────────────────────────
-    ctx.fillStyle = TITLE_COLOR;
-    ctx.font = mainFont(18);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`INFECTION LINEAGE TREE  —  ${guildName.toUpperCase()}`, naturalW / 2, TITLE_H / 2);
-
-    // Underline
-    ctx.strokeStyle = '#2a4a5a';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(CANVAS_PAD, TITLE_H - 4);
-    ctx.lineTo(naturalW - CANVAS_PAD, TITLE_H - 4);
-    ctx.stroke();
-
-    const offsetX = CANVAS_PAD;
-    const offsetY = CANVAS_PAD + TITLE_H;
-
-    // ── Connecting lines ───────────────────────────────────
-    ctx.lineWidth = 1.5;
-
+    const ox = CANVAS_PAD;
+    const oy = CANVAS_PAD;
+    
+    // ── Wires (drawn under boxes) ──────────────────────────
+    ctx.strokeStyle = LINE_COLOR;
+    ctx.lineWidth   = 2;
+    ctx.lineJoin    = 'round';
+    ctx.lineCap     = 'round';
+    
     for (const [parentId, node] of positions) {
         const kids = children.get(parentId) || [];
-        for (const kidId of kids) {
-            const kid = positions.get(kidId);
+        if (kids.length === 0) continue;
+        
+        const pxC = ox + node.x + node.w / 2;
+        const pyC = oy + node.y + node.h;
+        
+        if (kids.length === 1) {
+            // Single child — straight vertical drop
+            const kid = positions.get(kids[0]);
             if (!kid) continue;
-
-            const px  = offsetX + node.x + node.w / 2;
-            const py  = offsetY + node.y + node.h;
-            const kx  = offsetX + kid.x  + kid.w  / 2;
-            const ky  = offsetY + kid.y;
-            const mid = py + (ky - py) * 0.45;
-
-            ctx.strokeStyle = LINE_COLOR;
+            const kxC = ox + kid.x + kid.w / 2;
+            const kyC = oy + kid.y;
             ctx.beginPath();
-            ctx.moveTo(px, py);
-            ctx.bezierCurveTo(px, mid, kx, mid, kx, ky);
+            ctx.moveTo(pxC, pyC);
+            ctx.lineTo(kxC, kyC);
             ctx.stroke();
-
-            // Small arrow tip
-            ctx.fillStyle = LINE_COLOR;
+        } else {
+            // Multiple children — T-junction wire style
+            const midY = pyC + ROW_GAP / 2;
+            
+            // Leftmost and rightmost child centres
+            const firstKid = positions.get(kids[0]);
+            const lastKid  = positions.get(kids[kids.length - 1]);
+            if (!firstKid || !lastKid) continue;
+            
+            const leftX  = ox + firstKid.x + firstKid.w / 2;
+            const rightX = ox + lastKid.x  + lastKid.w  / 2;
+            
+            // Vertical from parent down to horizontal rail
             ctx.beginPath();
-            ctx.moveTo(kx, ky);
-            ctx.lineTo(kx - 4, ky - 7);
-            ctx.lineTo(kx + 4, ky - 7);
-            ctx.closePath();
-            ctx.fill();
+            ctx.moveTo(pxC, pyC);
+            ctx.lineTo(pxC, midY);
+            ctx.stroke();
+            
+            // Horizontal rail
+            ctx.beginPath();
+            ctx.moveTo(leftX, midY);
+            ctx.lineTo(rightX, midY);
+            ctx.stroke();
+            
+            // Vertical drop to each child
+            for (const kidId of kids) {
+                const kid = positions.get(kidId);
+                if (!kid) continue;
+                const kxC = ox + kid.x + kid.w / 2;
+                const kyC = oy + kid.y;
+                ctx.beginPath();
+                ctx.moveTo(kxC, midY);
+                ctx.lineTo(kxC, kyC);
+                ctx.stroke();
+            }
         }
     }
-
+    
     // ── Boxes ──────────────────────────────────────────────
-    const FONT_SZ_MAIN = 13;
-    const FONT_SZ_SUB  = 11;
-
+    const FSZMAIN = 13;
     for (const [id, node] of positions) {
-        const bx = offsetX + node.x;
-        const by = offsetY + node.y;
-        const isInvoker   = id === invokerId;
-        const isPatientZ  = !infectedData[id]?.infectedBy || !presentIds.includes(infectedData[id]?.infectedBy) || !infectedData[infectedData[id]?.infectedBy];
-
-        const fill   = isInvoker ? BOX_INVOKER : (isPatientZ ? BOX_ZERO : BOX_NORMAL);
+        const bx = ox + node.x;
+        const by = oy + node.y;
+        const isInvoker  = id === invokerId;
+        const rawParent  = infectedData[id]?.infectedBy ?? null;
+        const isPatientZ = !rawParent || !presentIds.includes(rawParent) || !infectedData[rawParent];
+        
+        const fill   = isInvoker ? BOX_INVOKER : (isPatientZ ? BOX_ZERO   : BOX_NORMAL);
         const stroke = isInvoker ? BOX_STROKE_I : (isPatientZ ? BOX_STROKE_Z : BOX_STROKE_N);
-
-        // Shadow
-        ctx.shadowColor   = stroke + '55';
-        ctx.shadowBlur    = 8;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 2;
-
+        
+        // Box fill
         ctx.fillStyle = fill;
         roundRect(ctx, bx, by, node.w, node.h, BOX_RADIUS);
         ctx.fill();
-
-        ctx.shadowBlur = 0;
-
+        
+        // Box border
         ctx.strokeStyle = stroke;
         ctx.lineWidth   = isInvoker ? 2 : 1.5;
         roundRect(ctx, bx, by, node.w, node.h, BOX_RADIUS);
         ctx.stroke();
-
-        // Label
-        const label    = nameMap.get(id) || id.slice(0, 8);
-        const cnt      = directCount.get(id) || 0;
-        const subLabel = cnt > 0 ? `spread to ${cnt}` : (isPatientZ ? 'patient zero' : '');
-
-        ctx.textAlign   = 'center';
+        
+        // Username label only
+        const label = nameMap.get(id) || id.slice(0, 8);
+        ctx.fillStyle    = TEXT_COLOR;
+        ctx.font         = mainFont(FSZMAIN);
+        ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle   = TEXT_MAIN;
-        ctx.font        = mainFont(FONT_SZ_MAIN);
-
-        const cy = by + node.h / 2;
-        if (subLabel) {
-            ctx.fillText(label, bx + node.w / 2, cy - 7);
-            ctx.fillStyle = TEXT_SUB;
-            ctx.font      = subFont(FONT_SZ_SUB);
-            ctx.fillText(subLabel, bx + node.w / 2, cy + 8);
-        } else {
-            ctx.fillText(label, bx + node.w / 2, cy);
-        }
+        ctx.fillText(label, bx + node.w / 2, by + node.h / 2);
     }
-
-    // ── Legend ─────────────────────────────────────────────
-    ctx.shadowBlur = 0;
-    const legendY = naturalH - LEGEND_H + 6;
-    const items = [
-        { color: BOX_STROKE_Z, label: 'Patient Zero' },
-        { color: BOX_STROKE_I, label: 'You'          },
-        { color: BOX_STROKE_N, label: 'Infected'     },
-    ];
-    let lx = CANVAS_PAD;
-    ctx.font = subFont(10);
-    ctx.textBaseline = 'middle';
-    for (const item of items) {
-        ctx.fillStyle = item.color;
-        ctx.fillRect(lx, legendY + 2, 10, 10);
-        ctx.fillStyle = LEGEND_COLOR;
-        ctx.textAlign = 'left';
-        ctx.fillText(item.label, lx + 14, legendY + 7);
-        lx += 14 + ctx.measureText(item.label).width + 24;
-    }
-
-    // Scale hint if auto-scaled
-    if (scale < 0.99) {
-        ctx.fillStyle = LEGEND_COLOR;
-        ctx.font = subFont(10);
-        ctx.textAlign = 'right';
-        ctx.fillText(`auto-scaled to ${Math.round(scale * 100)}%  |  use =it zoom <N> for bigger`, naturalW - CANVAS_PAD, legendY + 7);
-    }
-
+    
     return canvas.toBuffer('image/png');
 }
 
