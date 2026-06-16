@@ -37,6 +37,14 @@ function findAliveParticipantId(gameState) {
     }
     return null;
 }
+function createBar(percent, length = 25) {
+    const filled = Math.round((percent / 100) * length);
+
+    return (
+        '█'.repeat(filled) +
+        '░'.repeat(length - filled)
+    );
+}
 
 const client = new Client({
     intents: [
@@ -138,6 +146,148 @@ client.on('messageCreate', async (message) => {
         await message.channel.send(`${message.member.toString()} HAS BEEN INFECTED WITH AIDS!`);
         return;
     }
+
+if (message.content === '=infectioninfo') {
+    if (!message.guild) return;
+
+    const infectedIds = Infection.getInfectedIds(
+        message.guild.id
+    );
+
+    const members = await message.guild.members.fetch();
+
+    const humans = members.filter(
+        member => !member.user.bot
+    );
+
+    const infectedMembers = infectedIds.filter(
+        id => humans.has(id)
+    );
+
+    const infectedCount = infectedMembers.length;
+    const totalPopulation = humans.size;
+    const healthyCount = Math.max(
+        0,
+        totalPopulation - infectedCount
+    );
+
+    const infectionRate =
+        totalPopulation > 0
+            ? (infectedCount / totalPopulation) * 100
+            : 0;
+
+    const healthyRate = 100 - infectionRate;
+
+    const ratio =
+        infectedCount > 0
+            ? `1 in ${Math.round(
+                  totalPopulation / infectedCount
+              )}`
+            : 'No infections';
+
+    let threatLevel = 'LOW';
+    let concentration = 'MINIMAL';
+
+    if (infectionRate >= 75) {
+        threatLevel = 'EXTINCTION EVENT';
+        concentration = 'SEVERE';
+    } else if (infectionRate >= 50) {
+        threatLevel = 'CRITICAL';
+        concentration = 'HEAVY';
+    } else if (infectionRate >= 25) {
+        threatLevel = 'HIGH';
+        concentration = 'MODERATE';
+    } else if (infectionRate >= 10) {
+        threatLevel = 'MODERATE';
+        concentration = 'LIGHT';
+    }
+
+    function createBar(percent, length = 35) {
+        const filled = Math.round(
+            (percent / 100) * length
+        );
+
+        return (
+            '█'.repeat(filled) +
+            '░'.repeat(length - filled)
+        );
+    }
+
+    const infectionBar = createBar(infectionRate);
+    const healthyBar = createBar(healthyRate);
+
+    const infectedList =
+        infectedMembers.length > 0
+            ? infectedMembers
+                  .slice(0, 15)
+                  .map(id => `<@${id}>`)
+                  .join('\n')
+            : 'None';
+
+    const embed = new EmbedBuilder()
+        .setColor(
+            infectionRate >= 75
+                ? '#4B0000'
+                : infectionRate >= 50
+                ? '#8B0000'
+                : infectionRate >= 25
+                ? '#B22222'
+                : '#2F3136'
+        )
+        .setTitle('INFECTION STATUS REPORT')
+        .setDescription(
+            [
+                `Population ........ ${totalPopulation}`,
+                `Infected .......... ${infectedCount}`,
+                `Healthy ........... ${healthyCount}`,
+                '',
+                `Infection Rate .... ${infectionRate.toFixed(2)}%`,
+                `Healthy Rate ...... ${healthyRate.toFixed(2)}%`,
+                `Ratio ............. ${ratio}`,
+                `Threat Level ...... ${threatLevel}`,
+                `Concentration ..... ${concentration}`
+            ].join('\n')
+        )
+        .addFields(
+            {
+                name: 'Infection Concentration',
+                value:
+                    '```' +
+                    '\nINFECTED' +
+                    '\n' +
+                    infectionBar +
+                    '\n' +
+                    `${infectionRate.toFixed(1)}%` +
+                    '\n```'
+            },
+            {
+                name: 'Population Health',
+                value:
+                    '```' +
+                    '\nHEALTHY' +
+                    '\n' +
+                    healthyBar +
+                    '\n' +
+                    `${healthyRate.toFixed(1)}%` +
+                    '\n```'
+            },
+            {
+                name: 'Infected Subjects',
+                value: infectedList
+            }
+        )
+        .setFooter({
+            text: `${infectedCount} infected • ${healthyCount} healthy`
+        })
+        .setTimestamp();
+
+    await message.reply({
+        embeds: [embed]
+    });
+
+    return;
+}
+
 
     if (message.content === '=cure' || message.content.startsWith('=cure ')) {
         if (!message.guild || !message.member) return;
