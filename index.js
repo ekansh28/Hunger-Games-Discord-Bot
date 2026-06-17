@@ -7,6 +7,7 @@ const { commandData, handleInteraction: handleBrInteraction } = require('./banRo
 const setupMusic = require('./music');
 const { authorizedUsers, authorizedRoles, isAuthorized } = require('./authorization');
 const Infection = require('./infection');
+const path = require('path');
 
 // Role given to a user when they lose Ban Roulette (/br). Removed when that
 // user wins either /br or the Hunger Games (=play).
@@ -119,7 +120,7 @@ client.on('messageCreate', async (message) => {
 
         try {
             // music.distube is available from setupMusic(client)
-            await music.distube.play(voiceChannel, './alabama.mp3', {
+            await music.distube.play(voiceChannel, path.join(__dirname, 'alabama.mp3'), {
                 member: message.member,
                 textChannel: message.channel,
                 skip: true,

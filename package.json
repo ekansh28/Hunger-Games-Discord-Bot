@@ -16,9 +16,18 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@discordjs/opus": "^0.9.0",
+    "@discordjs/voice": "^0.17.0",
+    "@distube/file": "^1.0.0",
+    "@distube/soundcloud": "^2.0.2",
+    "@distube/spotify": "^2.0.1",
+    "@distube/yt-dlp": "^2.0.1",
+    "@distube/youtube": "^1.0.1",
     "canvas": "^3.2.3",
     "discord.js": "^14.26.4",
+    "distube": "^5.0.3",
     "dotenv": "^17.4.2",
+    "libsodium-wrappers": "^0.7.15",
     "node-fetch": "^3.3.2",
     "skia-canvas": "^3.0.8"
   }

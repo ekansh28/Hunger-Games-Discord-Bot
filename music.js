@@ -21,6 +21,7 @@ const { YouTubePlugin } = require('@distube/youtube');
 const { SpotifyPlugin } = require('@distube/spotify');
 const { SoundCloudPlugin } = require('@distube/soundcloud');
 const { YtDlpPlugin } = require('@distube/yt-dlp');
+const { FilePlugin } = require('@distube/file');
 const { isAuthorized } = require('./authorization');
 const path = require('path');
 
@@ -148,6 +149,7 @@ function setupMusic(client) {
             ),
             new SoundCloudPlugin(),
             new YtDlpPlugin({ update: false }), // relies on a system-installed yt-dlp binary (see nixpacks.toml)
+            new FilePlugin(),
         ],
         emitNewSongOnly: true,
         savePreviousSongs: true,
