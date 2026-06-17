@@ -120,12 +120,11 @@ client.on('messageCreate', async (message) => {
 
         try {
             // music.distube is available from setupMusic(client)
-            await music.distube.play(voiceChannel, `file://${path.join(__dirname, 'alabama.mp3')}`, {
+            await music.distube.play(voiceChannel, path.join(__dirname, 'alabama.mp3'), {
                 member: message.member,
                 textChannel: message.channel,
                 skip: true,
-                metadata: { leaveOnFinish: true },
-                source: 'file' // Prevents DisTube plugins like yt-dlp from hijacking the path
+                metadata: { leaveOnFinish: true }
             });
             await message.reply('🤠 **Sweet Home Alabama!** (The bot will leave after the song finishes)');
         } catch (err) {
