@@ -122,11 +122,12 @@ client.on('messageCreate', async (message) => {
             // Pass a file stream directly instead of a path string
             const stream = fs.createReadStream(path.join(__dirname, 'alabama.mp3'));
 
-            await music.distube.play(voiceChannel, stream, {
+            await music.distube.play(voiceChannel, path.join(__dirname, 'alabama.mp3'), {
                 member: message.member,
                 textChannel: message.channel,
                 skip: true,
-                metadata: { leaveOnFinish: true }
+                metadata: { leaveOnFinish: true },
+                source: 'file' // Crucial: forces DisTube to bypass yt-dlp search logic entirely
             });
             await message.reply('🤠 **Sweet Home Alabama!** (The bot will leave after the song finishes)');
         } catch (err) {

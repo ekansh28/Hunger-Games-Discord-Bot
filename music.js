@@ -142,6 +142,7 @@ function setupMusic(client) {
     const distube = new DisTube(client, {
         plugins: [
             // More specific plugins first; yt-dlp (700+ sites) last as a catch-all.
+            new FilePlugin(),
             new SpotifyPlugin(
                 process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET
                     ? { api: { clientId: process.env.SPOTIFY_CLIENT_ID, clientSecret: process.env.SPOTIFY_CLIENT_SECRET } }
@@ -152,7 +153,7 @@ function setupMusic(client) {
                 update: false,
                 args: ['--enable-file-urls']
             }), // relies on a system-installed yt-dlp binary (see nixpacks.toml)
-            new FilePlugin(),
+
         ],
         emitNewSongOnly: true,
         savePreviousSongs: true,
