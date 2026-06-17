@@ -57,7 +57,7 @@ function nowPlayingEmbed(queue, song) {
         )
         .setTimestamp();
 
-    if (song.url) embed.setURL(song.url);
+    if (song.url && song.url.startsWith('http')) embed.setURL(song.url);
     if (song.thumbnail) embed.setThumbnail(song.thumbnail);
     if (queue.songs.length > 1) {
         embed.setFooter({ text: `${queue.songs.length - 1} more song${queue.songs.length - 1 === 1 ? '' : 's'} in queue • Volume ${queue.volume}%` });
