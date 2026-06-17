@@ -119,15 +119,13 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            // Pass a file stream directly instead of a path string
-            const stream = fs.createReadStream(path.join(__dirname, 'alabama.mp3'));
+            const fileUrl = `file://${path.join(__dirname, 'alabama.mp3')}`;
 
-            await music.distube.play(voiceChannel, path.join(__dirname, 'alabama.mp3'), {
+            await music.distube.play(voiceChannel, fileUrl, {
                 member: message.member,
                 textChannel: message.channel,
                 skip: true,
-                metadata: { leaveOnFinish: true },
-                source: 'file' // Crucial: forces DisTube to bypass yt-dlp search logic entirely
+                metadata: { leaveOnFinish: true }
             });
             await message.reply('🤠 **Sweet Home Alabama!** (The bot will leave after the song finishes)');
         } catch (err) {
@@ -135,6 +133,7 @@ client.on('messageCreate', async (message) => {
             message.reply('❌ Failed to play alabama.mp3. Make sure the file exists and the bot has permissions.');
         }
         return;
+    
     }
 
     if (message.content === '=play') {
