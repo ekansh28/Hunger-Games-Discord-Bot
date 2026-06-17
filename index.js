@@ -108,6 +108,31 @@ client.on('messageCreate', async (message) => {
 
                 return;
             }
+    if (message.content === '=alabama') {
+        if (!isAuthorized(message.member || message.author)) {
+            return message.reply('Only authorized users can use this command.');
+        }
+        const voiceChannel = message.member?.voice?.channel;
+        if (!voiceChannel) {
+            return message.reply('Join a voice channel first.');
+        }
+
+        try {
+            // music.distube is available from setupMusic(client)
+            await music.distube.play(voiceChannel, './alabama.mp3', {
+                member: message.member,
+                textChannel: message.channel,
+                skip: true,
+                metadata: { leaveOnFinish: true }
+            });
+            await message.reply('🤠 **Sweet Home Alabama!** (The bot will leave after the song finishes)');
+        } catch (err) {
+            console.error('[Alabama] error:', err);
+            message.reply('❌ Failed to play alabama.mp3. Make sure the file exists and the bot has permissions.');
+        }
+        return;
+    }
+
     if (message.content === '=play') {
         if (!isAuthorized(message.member || message.author)) {
             return message.reply('Only authorized users can start the game lobby.');
@@ -182,7 +207,11 @@ client.on('messageCreate', async (message) => {
                 },
                 {
                     name: '🎵 Music',
-                    value: 'Use `/play`, `/skip`, `/stop`, `/queue`, `/pause`, `/resume` etc.\n*(See slash command list for full music options)*',
+                    value: [
+                        '`/play` — Play a song',
+                        '`=alabama` or `/alabama` — Play alabama.mp3 and leave *(authorized only)*',
+                        '*(See slash command list for full music options)*',
+                    ].join('\n'),
                     inline: false,
                 },
                 {

@@ -21,6 +21,8 @@ const { YouTubePlugin } = require('@distube/youtube');
 const { SpotifyPlugin } = require('@distube/spotify');
 const { SoundCloudPlugin } = require('@distube/soundcloud');
 const { YtDlpPlugin } = require('@distube/yt-dlp');
+const { isAuthorized } = require('./authorization');
+const path = require('path');
 
 // ── Theming ───────────────────────────────────────────────────
 const MUSIC_COLOR = '#1DB954';
@@ -167,11 +169,14 @@ function setupMusic(client) {
         })
         .on('finish', queue => {
             console.log('[Music] Queue finished');
-            console.log('[Music] Songs remaining:', queue.songs.length);
-
-            queue.textChannel?.send(
-                `Queue finished. Songs remaining: ${queue.songs.length}`
-            ).catch(() => {});
+            if (queue.metadata?.leaveOnFinish) {
+                queue.voice.leave();
+                queue.textChannel?.send('🤠 Finished playing Alabama, leaving the voice channel.').catch(() => {});
+            } else {
+                queue.textChannel?.send(
+                    `Queue finished. Songs remaining: ${queue.songs.length}`
+                ).catch(() => {});
+            }
         })
         .on('disconnect', queue => {
             queue.textChannel?.send('Disconnected from the voice channel.').catch(() => {});
@@ -326,8 +331,31 @@ function setupMusic(client) {
         await interaction.reply({ embeds: [nowPlayingEmbed(queue, queue.songs[0])] });
     }
 
+    async function cmdAlabama(interaction) {
+        if (!isAuthorized(interaction.member || interaction.user)) {
+            return interaction.reply({ content: '🚫 Only authorized users can play Alabama.', flags: 64 });
+        }
+        const voiceChannel = getVoiceChannelOrReply(interaction);
+        if (!voiceChannel) return;
+
+        await interaction.deferReply();
+        try {
+            await distube.play(voiceChannel, path.join(__dirname, 'alabama.mp3'), {
+                textChannel: interaction.channel,
+                member: interaction.member,
+                skip: true,
+                metadata: { leaveOnFinish: true },
+            });
+            await interaction.editReply('🤠 **Sweet Home Alabama!** (The bot will leave after the song finishes)');
+        } catch (err) {
+            console.error('[Music] /alabama error:', err);
+            await interaction.editReply({ embeds: [errorEmbed('❌ Could not play Alabama', describeError(err))] });
+        }
+    }
+
     // ── Slash command definitions ──────────────────────────────
     const commandBuilders = [
+        new SlashCommandBuilder().setName('alabama').setDescription('Plays alabama.mp3 and leaves when finished. (Authorized only)'),
         new SlashCommandBuilder()
             .setName('play')
             .setDescription('Play or queue a song from Spotify, YouTube, SoundCloud, or just a name.')
@@ -361,6 +389,7 @@ function setupMusic(client) {
     ];
 
     const handlers = {
+        alabama: cmdAlabama,
         play: cmdPlay,
         skip: cmdSkip,
         previous: cmdPrevious,
