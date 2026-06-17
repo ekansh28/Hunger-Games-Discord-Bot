@@ -1,5 +1,5 @@
 require('dotenv').config();
-
+const fs = require('fs'); 
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, PermissionsBitField, REST, Routes } = require('discord.js');
 const EventLogic = require('./utils/eventLogic');
 const ImageGenerator = require('./utils/imageGenerator');
@@ -119,8 +119,10 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            // music.distube is available from setupMusic(client)
-            await music.distube.play(voiceChannel, path.join(__dirname, 'alabama.mp3'), {
+            // Pass a file stream directly instead of a path string
+            const stream = fs.createReadStream(path.join(__dirname, 'alabama.mp3'));
+
+            await music.distube.play(voiceChannel, stream, {
                 member: message.member,
                 textChannel: message.channel,
                 skip: true,
