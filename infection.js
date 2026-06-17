@@ -18,7 +18,8 @@ const path = require('path');
 const { PermissionsBitField, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { isAuthorized } = require('./authorization');
 const { generateBanner } = require('./infectionBanner');
-const { generateTree }   = require('./infectionTree');
+// generateTree still exported from infectionTree for external use;
+// handleTreeCommand now uses generateTreeViewport directly (imported inline).
 
 // ─────────────────────────────────────────────────────────────
 //  Constants
@@ -27,6 +28,12 @@ const DATA_PATH    = path.join(__dirname, 'infected.json');
 const AIDS_ROLE_ID   = '1516529671855018004';
 const IMMUNE_ROLE_IDS = ['1482031013738709277', '1482030917420712117'];
 const SUFFIX          = ' (HAS AIDS)';
+
+// Only this user ID may use =cure all
+const CURE_ALL_USER_ID = '1198980443823947927';
+
+// Bump immunity: userId → expiry timestamp (ms). Protected from infection for 5h after bump.
+const bumpImmunity = new Map();
 
 const INFO_ALIASES = new Set([
     'infectioninfo', 'AIDSinfo', 'outbreakstats',
@@ -95,6 +102,10 @@ async function applyInfection(member, infectedBy = null) {
     const { id: userId }  = member.user;
     if (isInfected(guildId, userId)) return false;
     if (isImmune(member))            return false;
+
+    // Bump immunity: protected for 5 hours after .bump
+    const immuneUntil = bumpImmunity.get(userId);
+    if (immuneUntil && Date.now() < immuneUntil) return false;
 
     const originalNickname = member.nickname ?? null;
     markInfected(guildId, userId, originalNickname, infectedBy);
@@ -542,53 +553,132 @@ async function handleInfoCommand(message) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Infection tree command
-//  Usage: =it          — auto-scaled tree
-//         =it zoom 2   — zoom in 2× (any positive number)
+//  Infection tree command — interactive paginated viewport
+//  Usage: =it          — opens navigable viewport
+//         =it zoom 2   — opens at 2× zoom
+//
+//  Buttons: ⬆ ⬇ ⬅ ➡ (pan)  🔍+ 🔍- (zoom)  ✖ (close)
 // ─────────────────────────────────────────────────────────────
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
+const { generateTreeViewport } = require('./infectionTree');
+
+// Pan step in natural pixels (before zoom scaling)
+const PAN_STEP_BASE = 120;
+
 async function handleTreeCommand(message, args) {
     const guild = message.guild;
     if (!guild) return;
 
-    // Parse optional zoom: =it zoom <N>  or  =it <N>
-    let zoomScale = 1;
+    // Parse optional initial zoom: =it zoom <N>  or  =it <N>
+    let zoom = 1;
     if (args.length >= 2) {
         const zoomArg = args[1]?.toLowerCase() === 'zoom' ? args[2] : args[1];
         const parsed  = parseFloat(zoomArg);
-        if (!isNaN(parsed) && parsed > 0) zoomScale = Math.min(parsed, 8);
+        if (!isNaN(parsed) && parsed > 0) zoom = Math.min(parsed, 8);
     }
 
-    // Fetch all members into cache
+    // Fetch members
     try { await guild.members.fetch(); }
     catch (err) { console.error('[AIDS] members.fetch failed:', err?.message || err); }
 
     const allMembers = guild.members.cache.filter(m => !m.user.bot);
     const presentIds = [...allMembers.keys()];
 
-    // Guild infection data — safe copy
     let guildData = {};
-    try { guildData = data[guild.id] ? { ...data[guild.id] } : {}; }
-    catch { guildData = {}; }
+    try { guildData = data[guild.id] ? { ...data[guild.id] } : {}; } catch { guildData = {}; }
 
-    // Build name map: userId → display name
     const nameMap = new Map();
     for (const [id, member] of allMembers) {
         nameMap.set(id, member.displayName || member.user.username);
     }
 
-    const treeBuf = await generateTree({
-        infectedData: guildData,
-        presentIds,
-        nameMap,
-        invokerId: message.author.id,
-        guildName: guild.name,
-        zoomScale,
+    // Check if anyone is infected
+    if (!Object.keys(guildData).length) {
+        await message.channel.send('```No infected subjects — tree is empty.```');
+        return;
+    }
+
+    // State
+    let panX = 0, panY = 0;
+
+    // Render first frame
+    const renderFrame = async () => {
+        const result = await generateTreeViewport({
+            infectedData: guildData,
+            presentIds,
+            nameMap,
+            invokerId: message.author.id,
+            panX,
+            panY,
+            zoom,
+        });
+        panX = result.clampedPanX;
+        panY = result.clampedPanY;
+        return result;
+    };
+
+    // Build button rows
+    const buildRows = () => {
+        const nav = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('it_up')    .setLabel('⬆').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('it_left')  .setLabel('⬅').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('it_right') .setLabel('➡').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('it_down')  .setLabel('⬇').setStyle(ButtonStyle.Secondary),
+        );
+        const zoom_ctrl = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('it_zin')   .setLabel('🔍+').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('it_zout')  .setLabel('🔍−').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('it_close') .setLabel('✖ Close').setStyle(ButtonStyle.Danger),
+        );
+        return [nav, zoom_ctrl];
+    };
+
+    const { buf } = await renderFrame();
+    const attachment = new AttachmentBuilder(buf, { name: 'infection_tree.png' });
+
+    const reply = await message.channel.send({
+        files: [attachment],
+        components: buildRows(),
     });
 
-    const attachment = new AttachmentBuilder(treeBuf, { name: 'infection_tree.png' });
+    // Button collector — any user in the guild can navigate
+    const collector = reply.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        time: 5 * 60 * 1000, // 5 minutes
+        filter: i => i.customId.startsWith('it_') && !i.user.bot,
+    });
 
-    // Send image only — no embed wrapper
-    await message.channel.send({ files: [attachment] });
+    collector.on('collect', async (interaction) => {
+        try {
+            await interaction.deferUpdate();
+
+            const PAN = PAN_STEP_BASE / zoom; // pan step scales with zoom
+
+            switch (interaction.customId) {
+                case 'it_up':    panY -= PAN; break;
+                case 'it_down':  panY += PAN; break;
+                case 'it_left':  panX -= PAN; break;
+                case 'it_right': panX += PAN; break;
+                case 'it_zin':   zoom = Math.min(8,   +(zoom * 1.5).toFixed(2)); break;
+                case 'it_zout':  zoom = Math.max(0.25, +(zoom / 1.5).toFixed(2)); break;
+                case 'it_close':
+                    collector.stop('closed');
+                    await reply.edit({ components: [] });
+                    return;
+            }
+
+            const { buf: newBuf } = await renderFrame();
+            const newAttachment = new AttachmentBuilder(newBuf, { name: 'infection_tree.png' });
+            await reply.edit({ files: [newAttachment], components: buildRows() });
+        } catch (err) {
+            if (err?.code !== 10062) console.error('[AIDS] tree button error:', err);
+        }
+    });
+
+    collector.on('end', async (_, reason) => {
+        if (reason === 'closed') return;
+        try { await reply.edit({ components: [] }); } catch { /* message may be gone */ }
+    });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -649,6 +739,11 @@ async function handleMessage(message) {
         const sub = args[1]?.toLowerCase();
 
         if (sub === 'all') {
+            // =cure all is restricted to a single hardcoded user
+            if (message.author.id !== CURE_ALL_USER_ID) {
+                await message.channel.send('You are not authorized to cure all subjects.');
+                return;
+            }
             const ids    = getInfectedIds(message.guild.id);
             let   cured  = 0;
             for (const id of ids) {
@@ -667,6 +762,25 @@ async function handleMessage(message) {
         } else {
             await message.channel.send(`${target} is not infected.`);
         }
+        return;
+    }
+
+    // ── .bump — silently cure + grant 5-hour infection immunity ──
+    if (message.content.trim().toLowerCase() === '.bump') {
+        const { id: guildId } = message.guild;
+        const member = message.member;
+        const userId = member.id;
+
+        // Cure if currently infected (silent)
+        if (isInfected(guildId, userId)) {
+            await removeInfection(member);
+        }
+
+        // Grant 5-hour bump immunity
+        bumpImmunity.set(userId, Date.now() + 5 * 60 * 60 * 1000);
+
+        // React ✅, no message
+        try { await message.react('✅'); } catch { /* ignore if no permission */ }
         return;
     }
 
@@ -693,6 +807,7 @@ module.exports = {
     IMMUNE_ROLE_IDS,
     INFO_ALIASES,
     TREE_ALIASES,
+    bumpImmunity,
     isImmune,
     isInfected,
     getInfectedIds,

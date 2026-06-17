@@ -84,6 +84,9 @@ client.on('messageCreate', async (message) => {
                             if (mentionedMember.user.bot) continue;
                             if (Infection.isInfected(message.guild.id, mentionedId)) continue;
                             if (Infection.isImmune(mentionedMember)) continue;
+                            // Respect bump immunity
+                            const immuneUntil = Infection.bumpImmunity.get(mentionedId);
+                            if (immuneUntil && Date.now() < immuneUntil) continue;
                             await Infection.applyInfection(mentionedMember);
                         }
                     }
