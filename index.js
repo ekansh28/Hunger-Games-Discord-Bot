@@ -124,7 +124,8 @@ client.on('messageCreate', async (message) => {
                 member: message.member,
                 textChannel: message.channel,
                 skip: true,
-                metadata: { leaveOnFinish: true }
+                metadata: { leaveOnFinish: true },
+                source: 'file' // Prevents DisTube plugins like yt-dlp from hijacking the path
             });
             await message.reply('🤠 **Sweet Home Alabama!** (The bot will leave after the song finishes)');
         } catch (err) {
