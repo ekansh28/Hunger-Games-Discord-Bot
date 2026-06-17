@@ -55,21 +55,74 @@ function measureText(text, font) {
 function mainFont(sz) { return `bold ${sz}px "${FONT_FAMILY}"`; }
 
 // ─────────────────────────────────────────────────────────────
+//  Resolve parent links — uses infectedBy when present, otherwise
+//  infers from infection timestamps for legacy records.
+// ─────────────────────────────────────────────────────────────
+function resolveParentLinks(infectedData, presentIds) {
+    const present = new Set(presentIds);
+    const entries = Object.entries(infectedData)
+        .filter(([id]) => present.has(id))
+        .map(([id, rec]) => ({
+            id,
+            ts: rec?.timestamp ?? null,
+            infectedBy: rec && 'infectedBy' in rec ? rec.infectedBy : undefined,
+        }));
+
+    const sorted = [...entries].sort((a, b) => {
+        if (a.ts == null && b.ts == null) return a.id.localeCompare(b.id);
+        if (a.ts == null) return 1;
+        if (b.ts == null) return -1;
+        if (a.ts !== b.ts) return a.ts - b.ts;
+        return a.id.localeCompare(b.id);
+    });
+
+    const parentOf = new Map();
+    const alreadyInfected = [];
+
+    for (const entry of sorted) {
+        let parent = null;
+
+        if (entry.infectedBy && present.has(entry.infectedBy) && infectedData[entry.infectedBy] && entry.infectedBy !== entry.id) {
+            parent = entry.infectedBy;
+        } else if (alreadyInfected.length) {
+            // Missing/invalid infectedBy on older records — attach to the prior infection
+            // so the tree keeps depth instead of flattening everyone into one row.
+            parent = alreadyInfected[alreadyInfected.length - 1];
+        }
+
+        parentOf.set(entry.id, parent);
+        alreadyInfected.push(entry.id);
+    }
+
+    return parentOf;
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Build tree structure
 // ─────────────────────────────────────────────────────────────
 function buildTree(infectedData, presentIds) {
-    const present  = new Set(presentIds);
-    const entries  = Object.entries(infectedData).filter(([id]) => present.has(id));
+    const parentOf = resolveParentLinks(infectedData, presentIds);
     const children = new Map();
     children.set(null, []);
-    for (const [id] of entries) if (!children.has(id)) children.set(id, []);
-    for (const [id] of entries) {
-        const raw    = infectedData[id]?.infectedBy ?? null;
-        const parent = (raw && present.has(raw) && infectedData[raw]) ? raw : null;
+
+    for (const id of parentOf.keys()) {
+        if (!children.has(id)) children.set(id, []);
+    }
+
+    for (const [id, parent] of parentOf) {
         if (!children.has(parent)) children.set(parent, []);
         children.get(parent).push(id);
     }
-    return { roots: children.get(null) || [], children };
+
+    const ts = id => infectedData[id]?.timestamp ?? 0;
+    for (const [, kids] of children) {
+        kids.sort((a, b) => ts(a) - ts(b) || a.localeCompare(b));
+    }
+    if (children.get(null)) {
+        children.get(null).sort((a, b) => ts(a) - ts(b) || a.localeCompare(b));
+    }
+
+    return { roots: children.get(null) || [], children, parentOf };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -107,15 +160,17 @@ function assignX(id, leftEdge, children, boxWidths, positions) {
 //  Full layout — returns positions Map + canvas natural dims
 // ─────────────────────────────────────────────────────────────
 function layout(roots, children, nameMap) {
-    // BFS generations
+    // Depth-first generation assignment keeps siblings on the same row
+    // while preserving parent/child hierarchy down the tree.
+    const depthOf = new Map();
     const generations = [];
-    let current = roots.slice();
-    while (current.length) {
-        generations.push(current);
-        const next = [];
-        for (const id of current) next.push(...(children.get(id) || []));
-        current = next;
-    }
+    const visit = (id, depth) => {
+        if (!generations[depth]) generations[depth] = [];
+        generations[depth].push(id);
+        depthOf.set(id, depth);
+        for (const kid of children.get(id) || []) visit(kid, depth + 1);
+    };
+    for (const root of roots) visit(root, 0);
 
     // Box widths
     const FSZMAIN  = 13;
@@ -181,7 +236,7 @@ function roundRect(ctx, x, y, w, h, r) {
 //  Core draw — renders full tree onto a given canvas context
 //  at the given offset (ox, oy) and scale.
 // ─────────────────────────────────────────────────────────────
-function drawTree(ctx, positions, children, infectedData, presentIds, nameMap, invokerId, ox, oy) {
+function drawTree(ctx, positions, children, infectedData, presentIds, nameMap, invokerId, parentOf, ox, oy) {
     const FSZMAIN = 13;
 
     // ── Wires (under boxes) ───────────────────────────────────
@@ -234,8 +289,7 @@ function drawTree(ctx, positions, children, infectedData, presentIds, nameMap, i
         const bx = ox + node.x;
         const by = oy + node.y;
         const isInvoker  = id === invokerId;
-        const rawParent  = infectedData[id]?.infectedBy ?? null;
-        const isPatientZ = !rawParent || !presentIds.includes(rawParent) || !infectedData[rawParent];
+        const isPatientZ = (parentOf.get(id) ?? null) === null;
 
         const fill   = isInvoker ? BOX_INVOKER : (isPatientZ ? BOX_ZERO   : BOX_NORMAL);
         const stroke = isInvoker ? BOX_STROKE_I : (isPatientZ ? BOX_STROKE_Z : BOX_STROKE_N);
@@ -262,7 +316,7 @@ function drawTree(ctx, positions, children, infectedData, presentIds, nameMap, i
 //  generateTree — full tree at auto-scale (original behaviour)
 // ─────────────────────────────────────────────────────────────
 async function generateTree({ infectedData, presentIds, nameMap, invokerId, zoomScale = 1 }) {
-    const { roots, children } = buildTree(infectedData, presentIds);
+    const { roots, children, parentOf } = buildTree(infectedData, presentIds);
     if (!roots.length) return createCanvas(1, 1).toBuffer('image/png');
 
     const { positions, naturalW, naturalH } = layout(roots, children, nameMap);
@@ -275,9 +329,10 @@ async function generateTree({ infectedData, presentIds, nameMap, invokerId, zoom
     const H = Math.ceil(naturalH * scale);
     const canvas = createCanvas(W, H);
     const ctx    = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
 
     ctx.scale(scale, scale);
-    drawTree(ctx, positions, children, infectedData, presentIds, nameMap, invokerId, CANVAS_PAD, CANVAS_PAD);
+    drawTree(ctx, positions, children, infectedData, presentIds, nameMap, invokerId, parentOf, CANVAS_PAD, CANVAS_PAD);
 
     return canvas.toBuffer('image/png');
 }
@@ -292,7 +347,7 @@ async function generateTree({ infectedData, presentIds, nameMap, invokerId, zoom
 //  so the caller can update its stored pan state with clamped values.
 // ─────────────────────────────────────────────────────────────
 async function generateTreeViewport({ infectedData, presentIds, nameMap, invokerId, panX = 0, panY = 0, zoom = 1 }) {
-    const { roots, children } = buildTree(infectedData, presentIds);
+    const { roots, children, parentOf } = buildTree(infectedData, presentIds);
 
     if (!roots.length) {
         // Empty tree — return a tiny transparent buffer
@@ -313,20 +368,17 @@ async function generateTreeViewport({ infectedData, presentIds, nameMap, invoker
     const clampedPanX = Math.max(0, Math.min(panX, Math.max(0, scaledW - VP_W)));
     const clampedPanY = Math.max(0, Math.min(panY, Math.max(0, scaledH - VP_H)));
 
-    // Create the viewport canvas
+    // Create the viewport canvas (transparent background)
     const canvas = createCanvas(VP_W, VP_H);
     const ctx    = canvas.getContext('2d');
-
-    // Dark background
-    ctx.fillStyle = '#0d1117';
-    ctx.fillRect(0, 0, VP_W, VP_H);
+    ctx.clearRect(0, 0, VP_W, VP_H);
 
     // Scale + translate so viewport shows the right region
     ctx.save();
     ctx.scale(zoom, zoom);
     ctx.translate(-clampedPanX / zoom, -clampedPanY / zoom);
 
-    drawTree(ctx, positions, children, infectedData, presentIds, nameMap, invokerId, CANVAS_PAD, CANVAS_PAD);
+    drawTree(ctx, positions, children, infectedData, presentIds, nameMap, invokerId, parentOf, CANVAS_PAD, CANVAS_PAD);
 
     ctx.restore();
 

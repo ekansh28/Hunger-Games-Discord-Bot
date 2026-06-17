@@ -87,7 +87,7 @@ client.on('messageCreate', async (message) => {
                             // Respect bump immunity
                             const immuneUntil = Infection.bumpImmunity.get(mentionedId);
                             if (immuneUntil && Date.now() < immuneUntil) continue;
-                            await Infection.applyInfection(mentionedMember);
+                            await Infection.applyInfection(mentionedMember, message.member.id);
                         }
                     }
                 } catch (err) {
@@ -138,18 +138,8 @@ client.on('messageCreate', async (message) => {
         await message.reply({ embeds: [embed], components: [row] });
     }
 
-    if (message.content === '=infect') {
-        if (!message.guild || !message.member) return;
-        if (Infection.isImmune(message.member)) {
-            return message.reply('You are immune to the AIDS and cannot be infected.');
-        }
-        if (Infection.isInfected(message.guild.id, message.member.id)) {
-            return message.reply('You are already infected!');
-        }
-        await Infection.applyInfection(message.member);
-        await message.channel.send(`${message.member.toString()} HAS BEEN INFECTED WITH AIDS!`);
-        return;
-    }
+    // Handle infection-related messages (info, tree, bump, infect, cure, etc.)
+    await Infection.handleMessage(message);
 
     // ── =help ─────────────────────────────────────────────────────────────────
     if (message.content === '=help') {
@@ -205,70 +195,6 @@ client.on('messageCreate', async (message) => {
             .setTimestamp();
 
         return message.reply({ embeds: [embed] });
-    }
-
-    // ── AIDS commands — delegate to infection.js for all =infectioninfo
-    //    aliases, =infectiontree, =infect, =cure, and spread logic.
-    //    We handle =infect and =cure above in index.js for legacy reasons,
-    //    so only route the info/tree commands here to avoid double-handling.
-    {
-        const prefix = '=';
-        if (message.content.startsWith(prefix)) {
-            const cmd = message.content.slice(prefix.length).trim().split(/\s+/)[0]?.toLowerCase();
-            if (Infection.INFO_ALIASES.has(cmd) || Infection.TREE_ALIASES.has(cmd)) {
-                return Infection.handleMessage(message);
-            }
-        }
-    }
-
-    // ── Legacy inline =infectioninfo removed — now handled by infection.js above ──
-
-    if (message.content === '=cure' || message.content.startsWith('=cure ')) {
-        if (!message.guild || !message.member) return;
-        if (!isAuthorized(message.member)) {
-            return message.reply('Only authorized users can use this command.');
-        }
-
-        const args = message.content.slice(5).trim();
-
-        if (args.toLowerCase() === 'all') {
-            const ids = Infection.getInfectedIds(message.guild.id);
-            if (ids.length === 0) return message.reply('No one is currently infected.');
-            let count = 0;
-            for (const id of ids) {
-                const member = await message.guild.members.fetch(id).catch(() => null);
-                if (member) {
-                    if (await Infection.removeInfection(member)) count++;
-                } else {
-                    Infection.markCured(message.guild.id, id);
-                    count++;
-                }
-            }
-            return message.reply(`Cured ${count} infected user(s).`);
-        }
-
-        let targets = [];
-        if (message.mentions.members.size > 0) {
-            targets = [...message.mentions.members.values()];
-        } else if (args === '') {
-            targets = [message.member];
-        } else if (/^\d{17,19}$/.test(args)) {
-            const m = await message.guild.members.fetch(args).catch(() => null);
-            if (m) targets = [m];
-        }
-
-        if (targets.length === 0) return message.reply('User not found.');
-
-        const curedNames = [];
-        for (const m of targets) {
-            if (Infection.isInfected(message.guild.id, m.id)) {
-                await Infection.removeInfection(m);
-                curedNames.push(m.displayName || m.user.username);
-            }
-        }
-
-        if (curedNames.length === 0) return message.reply('That user is not infected.');
-        return message.reply(`Cured: ${curedNames.join(', ')}`);
     }
 
     if (message.content.startsWith('=addp ')) {

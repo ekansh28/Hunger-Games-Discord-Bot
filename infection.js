@@ -687,6 +687,41 @@ async function handleTreeCommand(message, args) {
 async function handleMessage(message) {
     if (message.author.bot || !message.guild) return;
 
+    // ── .bump — silently cure + grant 5-hour infection immunity ──
+    if (message.content.trim().toLowerCase() === '.bump') {
+        const { id: guildId } = message.guild;
+        const member = message.member;
+        const userId = member.id;
+
+        // Cure if currently infected (silent)
+        if (isInfected(guildId, userId)) {
+            await removeInfection(member);
+        }
+
+        // Add 5-hour immunity unless "You're on cooldown" message appears from Disboard (235148962103951360)
+        // We check the next few messages for up to 10 seconds.
+        const DISBOARD_ID = '235148962103951360';
+        const filter = m => m.author.id === DISBOARD_ID && m.channel.id === message.channel.id;
+        const collector = message.channel.createMessageCollector({ filter, time: 10000, max: 3 });
+
+        let onCooldown = false;
+        collector.on('collect', m => {
+            const content = (m.content || m.embeds[0]?.description || m.embeds[0]?.title || '').toLowerCase();
+            if (content.includes("you're on cooldown")) {
+                onCooldown = true;
+                collector.stop();
+            }
+        });
+
+        collector.on('end', () => {
+            if (!onCooldown) {
+                // Grant 5-hour bump immunity (5 * 60 * 60 * 1000 ms)
+                bumpImmunity.set(userId, Date.now() + 5 * 60 * 60 * 1000);
+            }
+        });
+        return;
+    }
+
     const prefix = '=';
     if (!message.content.startsWith(prefix)) return;
 
@@ -762,25 +797,6 @@ async function handleMessage(message) {
         } else {
             await message.channel.send(`${target} is not infected.`);
         }
-        return;
-    }
-
-    // ── .bump — silently cure + grant 5-hour infection immunity ──
-    if (message.content.trim().toLowerCase() === '.bump') {
-        const { id: guildId } = message.guild;
-        const member = message.member;
-        const userId = member.id;
-
-        // Cure if currently infected (silent)
-        if (isInfected(guildId, userId)) {
-            await removeInfection(member);
-        }
-
-        // Grant 5-hour bump immunity
-        bumpImmunity.set(userId, Date.now() + 5 * 60 * 60 * 1000);
-
-        // React ✅, no message
-        try { await message.react('✅'); } catch { /* ignore if no permission */ }
         return;
     }
 
