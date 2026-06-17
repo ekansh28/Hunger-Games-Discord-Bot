@@ -148,7 +148,10 @@ function setupMusic(client) {
                     : undefined,
             ),
             new SoundCloudPlugin(),
-            new YtDlpPlugin({ update: false }), // relies on a system-installed yt-dlp binary (see nixpacks.toml)
+            new YtDlpPlugin({
+                update: false,
+                args: ['--enable-file-urls']
+            }), // relies on a system-installed yt-dlp binary (see nixpacks.toml)
             new FilePlugin(),
         ],
         emitNewSongOnly: true,
