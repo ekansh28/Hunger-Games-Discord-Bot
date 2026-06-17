@@ -120,7 +120,7 @@ client.on('messageCreate', async (message) => {
 
         try {
             // music.distube is available from setupMusic(client)
-            await music.distube.play(voiceChannel, path.join(__dirname, 'alabama.mp3'), {
+            await music.distube.play(voiceChannel, `file://${path.join(__dirname, 'alabama.mp3')}`, {
                 member: message.member,
                 textChannel: message.channel,
                 skip: true,
