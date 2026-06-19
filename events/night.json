@@ -61,8 +61,8 @@
     { "type": "duel", "fatality": true, "killer": 0, "text": "{name} ambushes {name2} and slits their throat in the dark." },
     { "type": "duel", "fatality": true, "killer": 0, "text": "{name} shoots {name2} through the heart with an arrow before they can react." },
     { "type": "duel", "fatality": true, "killer": 0, "text": "{name} lures {name2} toward a noise, then drives a spear through them." },
-    { "type": "duel", "fatality": true, "killer": -1, "text": "{name} and {name2} fight in the dark and both end up dead." },
-    { "type": "duel", "fatality": true, "killer": -1, "text": "{name} attempts to climb a tree, but falls on {name2}, killing them both." },
+    { "type": "duel", "fatality": true, "killer": -2, "text": "{name} and {name2} fight in the dark and both end up dead." },
+    { "type": "duel", "fatality": true, "killer": -2, "text": "{name} attempts to climb a tree, but falls on {name2}, killing them both." },
     { "type": "team", "fatality": true, "killers": [0, 1], "text": "{name} and {name2} work together to drown {name3}." },
     { "type": "team", "fatality": true, "killers": [0, 1], "text": "{name} and {name2} sneak into {name3}'s camp and kill them silently." },
     { "type": "team", "fatality": true, "killers": [0, 1], "text": "{name} and {name2} pin {name3} down and stab them repeatedly." }

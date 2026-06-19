@@ -184,12 +184,25 @@ class EventLogic {
 
         if (event.type === 'duel') {
             if (event.killer === 0) {
+                // participants[0] kills, participants[1] dies
                 kill(participants[1]);
             } else if (event.killer === 1) {
+                // participants[1] kills, participants[0] dies
                 kill(participants[0]);
-            } else if (event.killer === -1) {
-                // Both die (e.g. "fall down the hill and both die")
+            } else if (event.killer === -2) {
+                // Explicit mutual death -- BOTH die (e.g. "roll down a hillside and die")
                 participants.forEach(p => kill(p));
+            } else if (event.killer === -1) {
+                // One survivor encoded in text: "Only {name} survives" / "Only {name2} survives"
+                const survivorIndices = this._parseSurvivorIndices(event.text, participants.length);
+                if (survivorIndices.length > 0) {
+                    participants.forEach((p, i) => {
+                        if (!survivorIndices.includes(i)) kill(p);
+                    });
+                } else {
+                    // Fallback: participants[0] survives, participants[1] dies
+                    kill(participants[1]);
+                }
             }
             return;
         }

@@ -73,7 +73,7 @@
     { "type": "duel", "fatality": true, "killer": 0, "text": "{name} snaps {name2}'s neck with their bare hands." },
     { "type": "duel", "fatality": true, "killer": 0, "text": "{name} drowns {name2} in a shallow creek." },
     { "type": "duel", "fatality": true, "killer": 0, "text": "{name} strangles {name2} with a length of wire." },
-    { "type": "duel", "fatality": true, "killer": -1, "text": "{name} attempts to climb a tree, but falls on {name2}, killing them both." },
+    { "type": "duel", "fatality": true, "killer": -2, "text": "{name} attempts to climb a tree, but falls on {name2}, killing them both." },
     { "type": "team", "fatality": true, "killers": [0, 1], "text": "{name} and {name2} work together to drown {name3}." },
     { "type": "team", "fatality": true, "killers": [0, 1], "text": "{name} and {name2} track down and kill {name3}." },
     { "type": "team", "fatality": true, "killers": [0, 1], "text": "{name} and {name2} ambush {name3} while they sleep." },

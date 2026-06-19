@@ -24,7 +24,7 @@
     { "type": "duel", "fatality": true, "killer": -1, "text": "{name} and {name2} are caught in a fire started by the Gamemakers. Only {name2} survives." },
     { "type": "duel", "fatality": true, "killer": -1, "text": "{name} and {name2} are attacked by wolf mutts. Only {name} survives." },
     { "type": "duel", "fatality": true, "killer": -1, "text": "{name} and {name2} are attacked by wolf mutts. Only {name2} survives." },
-    { "type": "duel", "fatality": true, "killer": -1, "text": "While fighting, {name} and {name2} lose their balance, roll down a jagged hillside, and die." },
+    { "type": "duel", "fatality": true, "killer": -2, "text": "While fighting, {name} and {name2} lose their balance, roll down a jagged hillside, and die." },
     { "type": "duel", "fatality": true, "killer": 0, "text": "{name} flails their weapon around, accidentally killing {name2}." },
     { "type": "team", "fatality": true, "killer": -1, "text": "{name}, {name2}, and {name3} are caught in a fire. Only {name} survives." },
     { "type": "team", "fatality": true, "killer": -1, "text": "{name}, {name2}, and {name3} are caught in a fire. Only {name2} survives." },

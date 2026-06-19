@@ -30,35 +30,29 @@ async function removeElimRoleOnWin(guild, userId) {
     }
 }
 
-// The participants map keeps every entrant (dead or alive) for the duration
-// of the game, so the lone survivor is whoever still has alive === true.
 function findAliveParticipantId(gameState) {
     for (const [id, p] of gameState.participants.entries()) {
         if (p.alive) return id;
     }
     return null;
 }
+
 function createBar(percent, length = 25) {
     const filled = Math.round((percent / 100) * length);
-
-    return (
-        '█'.repeat(filled) +
-        '░'.repeat(length - filled)
-    );
+    return '█'.repeat(filled) + '░'.repeat(length - filled);
 }
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,      // REQUIRED: privileged intent — enable in Discord Dev Portal too!
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates,  // required for music playback (DisTube/@discordjs/voice)
+        GatewayIntentBits.GuildVoiceStates,
     ]
 });
 
 const music = setupMusic(client);
-
 const gameStates = new Map();
 
 client.once('clientReady', async () => {
@@ -77,50 +71,41 @@ client.once('clientReady', async () => {
 
 
 client.on('messageCreate', async (message) => {
-            if (message.guild && !message.author.bot && message.member && message.mentions.members.size > 0) {
-                try {
-                    if (Infection.isInfected(message.guild.id, message.member.id)) {
-                        for (const [mentionedId, mentionedMember] of message.mentions.members) {
-                            if (mentionedId === message.member.id) continue;
-                            if (mentionedMember.user.bot) continue;
-                            if (Infection.isInfected(message.guild.id, mentionedId)) continue;
-                            if (Infection.isImmune(mentionedMember)) continue;
-                            // Respect bump immunity
-                            const immuneUntil = Infection.bumpImmunity.get(mentionedId);
-                            if (immuneUntil && Date.now() < immuneUntil) continue;
-                            await Infection.applyInfection(mentionedMember, message.member.id);
-                        }
-                    }
-                } catch (err) {
-                    console.error('[AIDS] spread error:', err);
+    // ── Infection spreading ───────────────────────────────────────────────────
+    if (message.guild && !message.author.bot && message.member && message.mentions.members.size > 0) {
+        try {
+            if (Infection.isInfected(message.guild.id, message.member.id)) {
+                for (const [mentionedId, mentionedMember] of message.mentions.members) {
+                    if (mentionedId === message.member.id) continue;
+                    if (mentionedMember.user.bot) continue;
+                    if (Infection.isInfected(message.guild.id, mentionedId)) continue;
+                    if (Infection.isImmune(mentionedMember)) continue;
+                    const immuneUntil = Infection.bumpImmunity.get(mentionedId);
+                    if (immuneUntil && Date.now() < immuneUntil) continue;
+                    await Infection.applyInfection(mentionedMember, message.member.id);
                 }
             }
-            if (message.content === '=test') {
-                const buffer = Buffer.from('Hello World');
+        } catch (err) {
+            console.error('[AIDS] spread error:', err);
+        }
+    }
 
-                await message.reply({
-                    files: [
-                        {
-                            attachment: buffer,
-                            name: 'test.txt'
-                        }
-                    ]
-                });
+    // ── =test ─────────────────────────────────────────────────────────────────
+    if (message.content === '=test') {
+        const buffer = Buffer.from('Hello World');
+        await message.reply({ files: [{ attachment: buffer, name: 'test.txt' }] });
+        return;
+    }
 
-                return;
-            }
+    // ── =alabama ──────────────────────────────────────────────────────────────
     if (message.content === '=alabama') {
         if (!isAuthorized(message.member || message.author)) {
             return message.reply('Only authorized users can use this command.');
         }
         const voiceChannel = message.member?.voice?.channel;
-        if (!voiceChannel) {
-            return message.reply('Join a voice channel first.');
-        }
-
+        if (!voiceChannel) return message.reply('Join a voice channel first.');
         try {
             const fileUrl = `file://${path.join(__dirname, 'alabama.mp3')}`;
-
             await music.distube.play(voiceChannel, fileUrl, {
                 member: message.member,
                 textChannel: message.channel,
@@ -133,15 +118,15 @@ client.on('messageCreate', async (message) => {
             message.reply('❌ Failed to play alabama.mp3. Make sure the file exists and the bot has permissions.');
         }
         return;
-    
     }
 
+    // ── =play ─────────────────────────────────────────────────────────────────
     if (message.content === '=play') {
         if (!isAuthorized(message.member || message.author)) {
             return message.reply('Only authorized users can start the game lobby.');
         }
         if (gameStates.has(message.channel.id)) {
-            return message.reply('A game lobby is already open in this channel.');
+            return message.reply('A game is already active in this channel. Use `=cancel` to end it first.');
         }
 
         const participants = new Map();
@@ -149,7 +134,8 @@ client.on('messageCreate', async (message) => {
             participants,
             deadParticipants: new Map(),
             status: 'lobby',
-            gameLogic: null
+            gameLogic: null,
+            cancelled: false
         });
 
         const embed = new EmbedBuilder()
@@ -164,9 +150,31 @@ client.on('messageCreate', async (message) => {
         );
 
         await message.reply({ embeds: [embed], components: [row] });
+        return;
     }
 
-    // Handle infection-related messages (info, tree, bump, infect, cure, etc.)
+    // ── =cancel ───────────────────────────────────────────────────────────────
+    if (message.content === '=cancel') {
+        if (!isAuthorized(message.member || message.author)) {
+            return message.reply('Only authorized users can cancel the game.');
+        }
+        const gameState = gameStates.get(message.channel.id);
+        if (!gameState) {
+            return message.reply('No active game in this channel.');
+        }
+
+        gameState.cancelled = true;
+        gameStates.delete(message.channel.id);
+
+        const embed = new EmbedBuilder()
+            .setTitle('Game Cancelled')
+            .setDescription('The Hunger Games have been cancelled by an authorized user. The arena is empty.')
+            .setColor('#888888')
+            .setTimestamp();
+        return message.reply({ embeds: [embed] });
+    }
+
+    // ── Handle infection messages ─────────────────────────────────────────────
     await Infection.handleMessage(message);
 
     // ── =help ─────────────────────────────────────────────────────────────────
@@ -179,18 +187,19 @@ client.on('messageCreate', async (message) => {
                 {
                     name: '🎮 Hunger Games  (`=play`)',
                     value: [
-                        '`=play` — Open a game lobby *(authorized only)*',
-                        '`=kill <@user|all>` — Eliminate a player mid-game *(admin only)*',
-                        '`=addp <@user|@role>` — Authorize a user/role to host *(admin only)*',
-                        '`=removep <@user|@role>` — Remove host authorization *(admin only)*',
+                        '`=play` -- Open a game lobby *(authorized only)*',
+                        '`=cancel` -- Cancel the current game or lobby *(authorized only)*',
+                        '`=kill <@user|all>` -- Eliminate a player mid-game *(admin only)*',
+                        '`=addp <@user|@role>` -- Authorize a user/role to host *(admin only)*',
+                        '`=removep <@user|@role>` -- Remove host authorization *(admin only)*',
                     ].join('\n'),
                     inline: false,
                 },
                 {
                     name: '🎰 Ban Roulette  (`/br`)',
                     value: [
-                        '`/br` — Start a Ban Roulette lobby *(authorized only)*',
-                        '`/brcancel` — Cancel the current lobby *(authorized only)*',
+                        '`/br` -- Start a Ban Roulette lobby *(authorized only)*',
+                        '`/brcancel` -- Cancel the current lobby *(authorized only)*',
                         'Players join via the button; last one standing wins.',
                     ].join('\n'),
                     inline: false,
@@ -198,11 +207,11 @@ client.on('messageCreate', async (message) => {
                 {
                     name: '🦠 AIDS / Infection',
                     value: [
-                        '`=infect` — Infect yourself with the AIDS',
-                        '`=cure [@user|all]` — Cure a user or everyone *(authorized only)*',
-                        '`=infectioninfo` — Full outbreak report with banner image',
+                        '`=infect` -- Infect yourself with the AIDS',
+                        '`=cure [@user|all]` -- Cure a user or everyone *(authorized only)*',
+                        '`=infectioninfo` -- Full outbreak report with banner image',
                         '  *Aliases:* `=AIDSinfo` `=outbreakstats` `=infected` `=infstats` `=infstat` `=vstat` `=vs`',
-                        '`=infectiontree` / `=it` — Visual lineage tree of who infected whom',
+                        '`=infectiontree` / `=it` -- Visual lineage tree of who infected whom',
                         '',
                         '**Spreading:** Infected users spread the AIDS by @mentioning healthy users.',
                     ].join('\n'),
@@ -211,24 +220,24 @@ client.on('messageCreate', async (message) => {
                 {
                     name: '🎵 Music',
                     value: [
-                        '`/play` — Play a song',
-                        '`=alabama` or `/alabama` — Play alabama.mp3 and leave *(authorized only)*',
+                        '`/play` -- Play a song',
+                        '`=alabama` or `/alabama` -- Play alabama.mp3 and leave *(authorized only)*',
                         '*(See slash command list for full music options)*',
                     ].join('\n'),
                     inline: false,
                 },
                 {
                     name: '🔧 Other',
-                    value: '`=test` — Test file attachment (debug)\n`=help` — Show this message',
+                    value: '`=test` -- Test file attachment (debug)\n`=help` -- Show this message',
                     inline: false,
                 },
             )
             .setFooter({ text: 'Authorized = added via =addp, or the main server admin.' })
             .setTimestamp();
-
         return message.reply({ embeds: [embed] });
     }
 
+    // ── =addp ─────────────────────────────────────────────────────────────────
     if (message.content.startsWith('=addp ')) {
         if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
             return message.reply('Only the main admin can authorize users or roles.');
@@ -264,8 +273,10 @@ client.on('messageCreate', async (message) => {
         } else {
             message.reply('User or role not found.');
         }
+        return;
     }
 
+    // ── =removep ──────────────────────────────────────────────────────────────
     if (message.content.startsWith('=removep ')) {
         if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
             return message.reply('Only the main admin can remove authorization.');
@@ -302,8 +313,10 @@ client.on('messageCreate', async (message) => {
         } else {
             message.reply('User or role not found in authorized list.');
         }
+        return;
     }
 
+    // ── =kill ─────────────────────────────────────────────────────────────────
     if (message.content.startsWith('=kill ')) {
         if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
             return message.reply('Only the main admin can use this command.');
@@ -383,6 +396,7 @@ client.on('messageCreate', async (message) => {
                 gameStates.delete(message.channel.id);
             }, 6000);
         }
+        return;
     }
 });
 
@@ -465,45 +479,99 @@ async function startGameSimulation(channel, gameState) {
     const imageGenerator = new ImageGenerator();
     let isFirstImage = true;
 
-    while (gameLogic.getAliveCount() > 1) {
-        const currentStage = gameLogic.getCurrentStage();
-        const events = gameLogic.getEventsForCurrentStage();
-        const batchSize = Math.min(6, Math.max(3, Math.ceil(events.length / 3)));
-
-        for (let i = 0; i < events.length; i += batchSize) {
-            const eventBatch = events.slice(i, i + batchSize);
-            if (!isFirstImage) await new Promise(r => setTimeout(r, 6000));
-            isFirstImage = false;
-
-            try {
-                const imageBuffer = await imageGenerator.generateEventImage(currentStage.title, currentStage.subtitle || '', eventBatch);
-                await channel.send({ files: [new AttachmentBuilder(imageBuffer, { name: 'hunger-games-event.png' })] });
-            } catch (error) {
-                console.error('Error generating image:', error);
-                const fallbackEmbed = new EmbedBuilder().setDescription(eventBatch.map(e => e.text).join('\n')).setColor('#FF6B35');
-                await channel.send({ embeds: [fallbackEmbed] });
+    // ── Main game loop ────────────────────────────────────────────────────────
+    try {
+        while (gameLogic.getAliveCount() > 1) {
+            // ── Check for cancellation ────────────────────────────────────────
+            if (gameState.cancelled || !gameStates.has(channel.id)) {
+                console.log('[HG] Game was cancelled mid-simulation, stopping.');
+                return;
             }
-        }
 
-        const fallenTributes = gameLogic.getStageDeaths();
-        if (fallenTributes.length > 0) {
-            await new Promise(r => setTimeout(r, 6000));
-            try {
-                const fallenImageBuffer = await imageGenerator.generateFallenTributesImage(fallenTributes);
-                if (fallenImageBuffer) await channel.send({ files: [new AttachmentBuilder(fallenImageBuffer, { name: 'fallen-tributes.png' })] });
-            } catch (error) { console.error('Error generating fallen tributes image:', error); }
-        }
+            const currentStage = gameLogic.getCurrentStage();
+            const events = gameLogic.getEventsForCurrentStage();
+            const batchSize = Math.min(6, Math.max(3, Math.ceil(events.length / 3)));
 
-        gameLogic.nextStage();
-        if (gameLogic.getAliveCount() > 1) await new Promise(r => setTimeout(r, 6000));
+            for (let i = 0; i < events.length; i += batchSize) {
+                if (gameState.cancelled || !gameStates.has(channel.id)) return;
+
+                const eventBatch = events.slice(i, i + batchSize);
+                if (!isFirstImage) await new Promise(r => setTimeout(r, 6000));
+                isFirstImage = false;
+
+                try {
+                    const imageBuffer = await imageGenerator.generateEventImage(currentStage.title, currentStage.subtitle || '', eventBatch);
+                    await channel.send({ files: [new AttachmentBuilder(imageBuffer, { name: 'hunger-games-event.png' })] });
+                } catch (error) {
+                    console.error('Error generating image:', error);
+                    const fallbackEmbed = new EmbedBuilder().setDescription(eventBatch.map(e => e.text).join('\n')).setColor('#FF6B35');
+                    await channel.send({ embeds: [fallbackEmbed] });
+                }
+            }
+
+            const fallenTributes = gameLogic.getStageDeaths();
+            if (fallenTributes.length > 0) {
+                await new Promise(r => setTimeout(r, 6000));
+                if (gameState.cancelled || !gameStates.has(channel.id)) return;
+                try {
+                    const fallenImageBuffer = await imageGenerator.generateFallenTributesImage(fallenTributes);
+                    if (fallenImageBuffer) await channel.send({ files: [new AttachmentBuilder(fallenImageBuffer, { name: 'fallen-tributes.png' })] });
+                } catch (error) {
+                    console.error('Error generating fallen tributes image:', error);
+                }
+            }
+
+            gameLogic.nextStage();
+            if (gameLogic.getAliveCount() > 1) await new Promise(r => setTimeout(r, 6000));
+        }
+    } catch (err) {
+        // ── Catch-all: any crash inside the game loop ends the game cleanly ──
+        console.error('[HG] Fatal error during game simulation:', err);
+        try {
+            await channel.send({
+                embeds: [new EmbedBuilder()
+                    .setTitle('⚠️ Game Error')
+                    .setDescription('An unexpected error occurred and the game has been ended. Use `=play` to start a new game.')
+                    .setColor('#FF0000')
+                    .setTimestamp()]
+            });
+        } catch (sendErr) {
+            console.error('[HG] Could not send error message to channel:', sendErr);
+        }
+        gameStates.delete(channel.id);
+        return;
     }
 
+    // ── Game over: determine winner ───────────────────────────────────────────
+    // Guard: cancelled mid-loop
+    if (gameState.cancelled || !gameStates.has(channel.id)) return;
+
     await new Promise(r => setTimeout(r, 6000));
+
     const winner = gameLogic.getWinner();
+
+    if (!winner) {
+        // Edge case: all tributes died simultaneously (e.g. mutual-death event
+        // on the final two players). Announce a draw instead of crashing.
+        console.warn('[HG] Game ended with no survivors (mutual death on final players).');
+        await channel.send({
+            embeds: [new EmbedBuilder()
+                .setTitle('NO VICTOR')
+                .setDescription('The last tributes have fallen simultaneously. There is no winner.\n\n*The Capitol is displeased.*')
+                .setColor('#FF4444')
+                .setTimestamp()]
+        });
+        gameStates.delete(channel.id);
+        return;
+    }
+
+    // Normal victory
     const winnerEmbed = new EmbedBuilder()
-        .setTitle('VICTORY')
+        .setTitle('🏆 VICTORY')
         .setDescription(`**${winner.displayName || winner.username}** has won the Hunger Games!\n\n*Congratulations, you have survived the arena!*`)
-        .setColor('#FFD700').setThumbnail(winner.avatarURL).setTimestamp();
+        .setColor('#FFD700')
+        .setThumbnail(winner.avatarURL)
+        .setTimestamp();
     await channel.send({ embeds: [winnerEmbed] });
     await removeElimRoleOnWin(channel.guild, findAliveParticipantId(gameState));
     gameStates.delete(channel.id);
