@@ -2,7 +2,7 @@ const { createCanvas, loadImage, registerFont } = require('canvas');
 const path = require('path');
 const fs = require('fs');
 
-// Load custom font from fonts/font.ttf if present
+// Load custom font from fonts/Helvetica.ttf if present
 const FONT_PATH = path.join(__dirname, '..', 'fonts', 'Helvetica.ttf');
 const FONT_FAMILY = fs.existsSync(FONT_PATH) ? (() => {
     registerFont(FONT_PATH, { family: 'CustomFont' });
@@ -50,7 +50,6 @@ class ImageGenerator {
             return canvas.toBuffer('image/png');
         } catch (err) {
             console.error('Event image generation failed:', err);
-            // Fallback error image
             const errorCanvas = createCanvas(800, 200);
             const ctx = errorCanvas.getContext('2d');
             ctx.fillStyle = '#000000';
@@ -115,7 +114,7 @@ class ImageGenerator {
                     const avatar = await this.loadAvatar(participant.avatarURL);
                     ctx.save();
                     ctx.beginPath();
-                    ctx.arc(currentX + avatarSize/2, startY + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+                    ctx.arc(currentX + avatarSize / 2, startY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
                     ctx.closePath();
                     ctx.clip();
                     ctx.drawImage(avatar, currentX, startY, avatarSize, avatarSize);
@@ -124,7 +123,7 @@ class ImageGenerator {
                     ctx.strokeStyle = '#FFFFFF';
                     ctx.lineWidth = 2;
                     ctx.beginPath();
-                    ctx.arc(currentX + avatarSize/2, startY + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+                    ctx.arc(currentX + avatarSize / 2, startY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
                     ctx.stroke();
                 } catch {
                     ctx.fillStyle = '#666666';
@@ -133,7 +132,7 @@ class ImageGenerator {
                     ctx.font = `12px "${FONT_FAMILY}"`;
                     ctx.textAlign = 'center';
                     const dn = participant.displayName || participant.username;
-                    ctx.fillText(dn.substring(0, 2).toUpperCase(), currentX + avatarSize/2, startY + avatarSize/2 + 4);
+                    ctx.fillText(dn.substring(0, 2).toUpperCase(), currentX + avatarSize / 2, startY + avatarSize / 2 + 4);
                 }
                 currentX += avatarSpacing;
             }
@@ -152,44 +151,74 @@ class ImageGenerator {
         return lineY + 5;
     }
 
+    // ─── BUG FIX ─────────────────────────────────────────────────────────────
+    // The old version checked word.toLowerCase().includes(name.toLowerCase())
+    // which meant a participant named "a" would highlight EVERY word containing
+    // the letter "a". Single-character names (or short names that are substrings
+    // of common words) broke all text.
+    //
+    // Fix: we build a Set of every exact token that belongs to any participant
+    // name, using word-boundary splitting. We then compare each rendered word
+    // (stripped of trailing punctuation) against that Set for an exact match.
+    // ─────────────────────────────────────────────────────────────────────────
     drawColoredEventText(ctx, text, x, y, participants) {
+        // Build a set of name tokens (lowercased) from all participants
+        const nameTokens = new Set();
+        if (participants) {
+            for (const p of participants) {
+                const fullName = (p.displayName || p.username || '').trim();
+                if (!fullName) continue;
+                for (const token of fullName.split(/\s+/)) {
+                    if (token.length > 1) { // skip single-char tokens entirely
+                        nameTokens.add(token.toLowerCase());
+                    }
+                }
+            }
+        }
+
+        // We also need to match multi-word names. Build a list of full display
+        // names (lowercased) for substring-of-sentence matching.
+        const fullNames = participants
+            ? participants
+                .map(p => (p.displayName || p.username || '').trim().toLowerCase())
+                .filter(n => n.length > 1)
+            : [];
+
         const words = text.split(' ');
-        const participantNames = participants ? participants.map(p => p.displayName || p.username) : [];
         const totalWidth = ctx.measureText(text).width;
-        let startX = x - (totalWidth / 2);
+        let currentX = x - totalWidth / 2;
 
         for (let i = 0; i < words.length; i++) {
             const word = words[i];
-            const isName = participantNames.some(name =>
-                word.toLowerCase().includes(name.toLowerCase()) ||
-                name.toLowerCase().includes(word.toLowerCase()) ||
-                this.isPartOfName(word, name, words, i)
-            );
+            // Strip trailing punctuation for the match check, but render the original
+            const wordClean = word.replace(/[^a-zA-Z0-9'-]/g, '').toLowerCase();
+
+            // Check 1: exact token match
+            let isName = wordClean.length > 1 && nameTokens.has(wordClean);
+
+            // Check 2: this word starts a multi-word name span
+            if (!isName && fullNames.length > 0) {
+                for (const fullName of fullNames) {
+                    const nameParts = fullName.split(/\s+/);
+                    if (nameParts.length > 1 && i + nameParts.length <= words.length) {
+                        const span = words
+                            .slice(i, i + nameParts.length)
+                            .map(w => w.replace(/[^a-zA-Z0-9'-]/g, '').toLowerCase())
+                            .join(' ');
+                        if (span === fullName) {
+                            isName = true;
+                            break;
+                        }
+                    }
+                }
+            }
 
             ctx.fillStyle = isName ? this.nameColor : this.descriptionColor;
             ctx.textAlign = 'left';
-            ctx.fillText(word, startX, y);
-            startX += ctx.measureText(word).width;
-            if (i < words.length - 1) startX += ctx.measureText(' ').width;
+            ctx.fillText(word, currentX, y);
+            currentX += ctx.measureText(word).width;
+            if (i < words.length - 1) currentX += ctx.measureText(' ').width;
         }
-    }
-
-    isPartOfName(word, fullName, allWords, currentIndex) {
-        const nameParts = fullName.toLowerCase().split(' ');
-        const wordLower = word.toLowerCase();
-        if (nameParts.includes(wordLower)) return true;
-        for (let i = 0; i < nameParts.length; i++) {
-            if (nameParts[i] === wordLower) {
-                let matches = true;
-                for (let j = 1; j < nameParts.length - i; j++) {
-                    if (currentIndex + j >= allWords.length || allWords[currentIndex + j].toLowerCase() !== nameParts[i + j]) {
-                        matches = false; break;
-                    }
-                }
-                if (matches) return true;
-            }
-        }
-        return false;
     }
 
     async loadAvatar(avatarURL) {
@@ -226,7 +255,7 @@ class ImageGenerator {
         const padding = 40;
         const titleHeight = 80;
         const width = 800;
-        const height = titleHeight + padding + (rows * (avatarSize + 20)) + padding;
+        const height = titleHeight + padding + (rows * (avatarSize + 30)) + padding;
 
         const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
@@ -240,7 +269,8 @@ class ImageGenerator {
         ctx.textBaseline = 'top';
         ctx.fillText('Fallen Tributes', width / 2, 30);
 
-        const startX = (width - (Math.min(fallenTributes.length, avatarsPerRow) * (avatarSize + 20) - 20)) / 2;
+        const rowWidth = Math.min(fallenTributes.length, avatarsPerRow) * (avatarSize + 20) - 20;
+        const startX = (width - rowWidth) / 2;
         let currentRow = 0, currentCol = 0;
 
         for (const tribute of fallenTributes) {
@@ -251,7 +281,7 @@ class ImageGenerator {
                 const avatar = await this.loadAvatar(tribute.avatarURL);
                 ctx.save();
                 ctx.beginPath();
-                ctx.arc(x + avatarSize/2, y + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+                ctx.arc(x + avatarSize / 2, y + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
                 ctx.closePath();
                 ctx.clip();
                 ctx.filter = 'grayscale(100%) contrast(1.2) brightness(0.8)';
@@ -261,7 +291,7 @@ class ImageGenerator {
                 ctx.strokeStyle = '#666666';
                 ctx.lineWidth = 3;
                 ctx.beginPath();
-                ctx.arc(x + avatarSize/2, y + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+                ctx.arc(x + avatarSize / 2, y + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
                 ctx.stroke();
             } catch {
                 ctx.fillStyle = '#333333';
@@ -270,7 +300,7 @@ class ImageGenerator {
                 ctx.font = `14px "${FONT_FAMILY}"`;
                 ctx.textAlign = 'center';
                 const dn = tribute.displayName || tribute.username;
-                ctx.fillText(dn.substring(0, 2).toUpperCase(), x + avatarSize/2, y + avatarSize/2 + 4);
+                ctx.fillText(dn.substring(0, 2).toUpperCase(), x + avatarSize / 2, y + avatarSize / 2 + 4);
             }
 
             currentCol++;

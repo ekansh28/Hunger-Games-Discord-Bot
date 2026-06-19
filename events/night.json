@@ -2,244 +2,69 @@
   "title": "Night {number}",
   "subtitle": "The arena falls silent as darkness covers the tributes.",
   "events": [
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} starts a fire."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} sets up camp for the night."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} loses sight of where they are."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} climbs a tree to rest."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} goes to sleep."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} and {name2} sleep in shifts."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} sees a fire, but stays hidden."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} scouts around the arena."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} and {name2} huddle for warmth."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} and {name2} run into each other and decide to truce for the night."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} passes out from exhaustion."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} cooks their food before putting their fire out."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} and {name2} talk about the tributes still alive."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} thinks about home."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} tends to their wounds."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} quietly hums."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} questions their sanity."
-    },
-    {
-      "type": "team",
-      "fatality": false,
-      "text": "{name}, {name2}, and {name3} sleep in shifts."
-    },
-    {
-      "type": "team",
-      "fatality": false,
-      "text": "{name}, {name2}, and {name3} discuss the games and what might happen in the morning."
-    },
-    {
-      "type": "team",
-      "fatality": false,
-      "text": "{name}, {name2}, {name3}, and {name4} sleep in shifts."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": 0,
-      "text": "{name} kills {name2} while they are sleeping."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": 0,
-      "text": "{name} sets up an explosive but it backfires, killing them."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": 0,
-      "text": "{name} stabs {name2} with a tree branch."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": 0,
-      "text": "{name} strangles {name2} with a rope."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": 0,
-      "text": "{name} shoots an arrow at {name2}, but misses and kills {name3} instead."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} unknowingly eats toxic berries."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} is unable to start a fire and freezes to death."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} bleeds out due to untreated injuries."
-    },
-    {
-      "type": "team",
-      "fatality": true,
-      "killers": [0, 1],
-      "text": "{name} and {name2} work together to drown {name3}."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} receives fresh food from an unknown sponsor."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": -1,
-      "text": "{name} attempts to climb a tree, but falls on {name2}, killing them both."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} and {name2} talk about the tributes still alive."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} tries to sing themselves to sleep."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} dies trying to escape the arena."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} receives a hatchet from an unknown sponsor."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} unknowingly eats toxic berries."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} screams for help."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} and {name2} hold hands."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} dies from hypothermia."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} receives clean water from an unknown sponsor."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} looks at the night sky."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} receives medical supplies from an unknown sponsor."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} makes a slingshot."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": 0,
-      "text": "{name} convinces {name2} not to kill them, only to kill them instead."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": 0,
-      "text": "{name} severely slices {name2} with a sword."
-    },
-    {
-      "type": "duel",
-      "fatality": false,
-      "text": "{name} touches {name2}."
-    }
+    { "type": "solo", "fatality": false, "text": "{name} starts a fire." },
+    { "type": "solo", "fatality": false, "text": "{name} sets up camp for the night." },
+    { "type": "solo", "fatality": false, "text": "{name} loses sight of where they are." },
+    { "type": "solo", "fatality": false, "text": "{name} climbs a tree to rest." },
+    { "type": "solo", "fatality": false, "text": "{name} goes to sleep." },
+    { "type": "solo", "fatality": false, "text": "{name} sees a fire, but stays hidden." },
+    { "type": "solo", "fatality": false, "text": "{name} scouts around the arena." },
+    { "type": "solo", "fatality": false, "text": "{name} passes out from exhaustion." },
+    { "type": "solo", "fatality": false, "text": "{name} cooks their food before putting their fire out." },
+    { "type": "solo", "fatality": false, "text": "{name} thinks about home." },
+    { "type": "solo", "fatality": false, "text": "{name} tends to their wounds." },
+    { "type": "solo", "fatality": false, "text": "{name} quietly hums." },
+    { "type": "solo", "fatality": false, "text": "{name} questions their sanity." },
+    { "type": "solo", "fatality": false, "text": "{name} receives fresh food from an unknown sponsor." },
+    { "type": "solo", "fatality": false, "text": "{name} tries to sing themselves to sleep." },
+    { "type": "solo", "fatality": false, "text": "{name} receives a hatchet from an unknown sponsor." },
+    { "type": "solo", "fatality": false, "text": "{name} screams for help." },
+    { "type": "solo", "fatality": false, "text": "{name} receives clean water from an unknown sponsor." },
+    { "type": "solo", "fatality": false, "text": "{name} looks at the night sky." },
+    { "type": "solo", "fatality": false, "text": "{name} receives medical supplies from an unknown sponsor." },
+    { "type": "solo", "fatality": false, "text": "{name} makes a slingshot." },
+    { "type": "solo", "fatality": false, "text": "{name} sharpens their blade by moonlight." },
+    { "type": "solo", "fatality": false, "text": "{name} wraps themselves in leaves to stay warm." },
+    { "type": "solo", "fatality": false, "text": "{name} stays awake all night listening for footsteps." },
+    { "type": "solo", "fatality": false, "text": "{name} prays to whatever gods they believe in." },
+    { "type": "solo", "fatality": false, "text": "{name} breaks down crying but pulls themselves together before dawn." },
+    { "type": "solo", "fatality": false, "text": "{name} eats the last of their rations and stares into the darkness." },
+    { "type": "solo", "fatality": false, "text": "{name} sets up a perimeter of noise traps around their camp." },
+    { "type": "solo", "fatality": false, "text": "{name} talks to themselves to stay awake." },
+    { "type": "duel", "fatality": false, "text": "{name} and {name2} huddle for warmth." },
+    { "type": "duel", "fatality": false, "text": "{name} and {name2} run into each other and decide to truce for the night." },
+    { "type": "duel", "fatality": false, "text": "{name} and {name2} talk about the tributes still alive." },
+    { "type": "duel", "fatality": false, "text": "{name} and {name2} sleep in shifts." },
+    { "type": "duel", "fatality": false, "text": "{name} and {name2} hold hands." },
+    { "type": "duel", "fatality": false, "text": "{name} and {name2} share their rations quietly under the stars." },
+    { "type": "duel", "fatality": false, "text": "{name} keeps watch while {name2} sleeps." },
+    { "type": "duel", "fatality": false, "text": "{name} and {name2} argue over whether to move camp." },
+    { "type": "duel", "fatality": false, "text": "{name} convinces {name2} to turn back from hunting tonight." },
+    { "type": "team", "fatality": false, "text": "{name}, {name2}, and {name3} sleep in shifts." },
+    { "type": "team", "fatality": false, "text": "{name}, {name2}, and {name3} discuss the games and what might happen in the morning." },
+    { "type": "team", "fatality": false, "text": "{name}, {name2}, {name3}, and {name4} sleep in shifts." },
+    { "type": "solo", "fatality": true, "text": "{name} unknowingly eats toxic berries." },
+    { "type": "solo", "fatality": true, "text": "{name} is unable to start a fire and freezes to death." },
+    { "type": "solo", "fatality": true, "text": "{name} bleeds out due to untreated injuries." },
+    { "type": "solo", "fatality": true, "text": "{name} dies trying to escape the arena." },
+    { "type": "solo", "fatality": true, "text": "{name} dies from hypothermia." },
+    { "type": "solo", "fatality": true, "text": "{name} falls from a tree while sleeping and doesn't survive the landing." },
+    { "type": "solo", "fatality": true, "text": "{name} is ambushed by a mutt and torn apart before they can scream." },
+    { "type": "solo", "fatality": true, "text": "{name} is found by the Gamemakers' hover drones, dead of unknown causes." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} kills {name2} while they are sleeping." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} stabs {name2} with a tree branch." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} strangles {name2} with a rope." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} convinces {name2} not to kill them, only to kill them instead." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} severely slices {name2} with a sword." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} plunges a knife into {name2}'s chest as they sleep." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} caves {name2}'s skull in with a rock." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} ambushes {name2} and slits their throat in the dark." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} shoots {name2} through the heart with an arrow before they can react." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} lures {name2} toward a noise, then drives a spear through them." },
+    { "type": "duel", "fatality": true, "killer": -1, "text": "{name} and {name2} fight in the dark and both end up dead." },
+    { "type": "duel", "fatality": true, "killer": -1, "text": "{name} attempts to climb a tree, but falls on {name2}, killing them both." },
+    { "type": "team", "fatality": true, "killers": [0, 1], "text": "{name} and {name2} work together to drown {name3}." },
+    { "type": "team", "fatality": true, "killers": [0, 1], "text": "{name} and {name2} sneak into {name3}'s camp and kill them silently." },
+    { "type": "team", "fatality": true, "killers": [0, 1], "text": "{name} and {name2} pin {name3} down and stab them repeatedly." }
   ]
 }

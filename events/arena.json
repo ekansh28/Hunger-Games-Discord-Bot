@@ -2,126 +2,34 @@
   "title": "Arena Event",
   "subtitle": "The Gamemakers have decided to intervene.",
   "events": [
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} is engulfed in a fire started by the Gamemakers."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} is killed by wolf mutts."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} is struck by lightning."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} is caught in an earthquake and crushed by falling rocks."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} is swept away by a flash flood."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} survives the fire that engulfs their area."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} escapes the wolf mutts."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} survives the lightning strike."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} survives the earthquake."
-    },
-    {
-      "type": "solo",
-      "fatality": false,
-      "text": "{name} survives the flash flood."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": -1,
-      "text": "{name} and {name2} are caught in a fire started by the Gamemakers. {name} survives."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": -1,
-      "text": "{name} and {name2} are caught in a fire started by the Gamemakers. {name2} survives."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": -1,
-      "text": "{name} and {name2} are attacked by wolf mutts. {name} survives."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": -1,
-      "text": "{name} and {name2} are attacked by wolf mutts. {name2} survives."
-    },
-    {
-      "type": "team",
-      "fatality": true,
-      "killer": -1,
-      "text": "{name}, {name2}, and {name3} are caught in a fire. Only {name} survives."
-    },
-    {
-      "type": "team",
-      "fatality": true,
-      "killer": -1,
-      "text": "{name}, {name2}, and {name3} are caught in a fire. Only {name2} survives."
-    },
-    {
-      "type": "team",
-      "fatality": true,
-      "killer": -1,
-      "text": "{name}, {name2}, and {name3} are caught in a fire. Only {name3} survives."
-    },
-    {
-      "type": "team",
-      "fatality": true,
-      "killer": -1,
-      "text": "{name}, {name2}, {name3}, and {name4} are caught in an earthquake. Only {name} survives."
-    },
-    {
-      "type": "team",
-      "fatality": true,
-      "killer": -1,
-      "text": "{name}, {name2}, {name3}, and {name4} are caught in an earthquake. Only {name2} survives."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": -1,
-      "text": "While fighting, {name} and {name2} lose their balance, roll down a jagged hillside, and die."
-    },
-    {
-      "type": "solo",
-      "fatality": true,
-      "text": "{name} accidentally makes contact with spiny, lethal plant life."
-    },
-    {
-      "type": "duel",
-      "fatality": true,
-      "killer": 0,
-      "text": "{name} flails their weapon around, accidentally killing {name2}."
-    }
+    { "type": "solo", "fatality": true, "text": "{name} is engulfed in a fire started by the Gamemakers." },
+    { "type": "solo", "fatality": true, "text": "{name} is killed by wolf mutts." },
+    { "type": "solo", "fatality": true, "text": "{name} is struck by lightning." },
+    { "type": "solo", "fatality": true, "text": "{name} is caught in an earthquake and crushed by falling rocks." },
+    { "type": "solo", "fatality": true, "text": "{name} is swept away by a flash flood." },
+    { "type": "solo", "fatality": true, "text": "{name} accidentally makes contact with spiny, lethal plant life." },
+    { "type": "solo", "fatality": true, "text": "{name} is swarmed by tracker jackers and dies from the venom." },
+    { "type": "solo", "fatality": true, "text": "{name} is caught in a firestorm the Gamemakers release across half the arena." },
+    { "type": "solo", "fatality": true, "text": "{name} is eaten alive by a pack of wolf mutts." },
+    { "type": "solo", "fatality": true, "text": "{name} is poisoned by a toxic fog the Gamemakers deploy." },
+    { "type": "solo", "fatality": false, "text": "{name} survives the fire that engulfs their area." },
+    { "type": "solo", "fatality": false, "text": "{name} escapes the wolf mutts." },
+    { "type": "solo", "fatality": false, "text": "{name} survives the lightning strike." },
+    { "type": "solo", "fatality": false, "text": "{name} survives the earthquake." },
+    { "type": "solo", "fatality": false, "text": "{name} survives the flash flood." },
+    { "type": "solo", "fatality": false, "text": "{name} outpaces the tracker jackers and dunks their head in a river." },
+    { "type": "solo", "fatality": false, "text": "{name} narrowly avoids the firestorm by diving into a trench." },
+    { "type": "solo", "fatality": false, "text": "{name} holds their breath and crawls under the toxic fog." },
+    { "type": "duel", "fatality": true, "killer": -1, "text": "{name} and {name2} are caught in a fire started by the Gamemakers. Only {name} survives." },
+    { "type": "duel", "fatality": true, "killer": -1, "text": "{name} and {name2} are caught in a fire started by the Gamemakers. Only {name2} survives." },
+    { "type": "duel", "fatality": true, "killer": -1, "text": "{name} and {name2} are attacked by wolf mutts. Only {name} survives." },
+    { "type": "duel", "fatality": true, "killer": -1, "text": "{name} and {name2} are attacked by wolf mutts. Only {name2} survives." },
+    { "type": "duel", "fatality": true, "killer": -1, "text": "While fighting, {name} and {name2} lose their balance, roll down a jagged hillside, and die." },
+    { "type": "duel", "fatality": true, "killer": 0, "text": "{name} flails their weapon around, accidentally killing {name2}." },
+    { "type": "team", "fatality": true, "killer": -1, "text": "{name}, {name2}, and {name3} are caught in a fire. Only {name} survives." },
+    { "type": "team", "fatality": true, "killer": -1, "text": "{name}, {name2}, and {name3} are caught in a fire. Only {name2} survives." },
+    { "type": "team", "fatality": true, "killer": -1, "text": "{name}, {name2}, and {name3} are caught in a fire. Only {name3} survives." },
+    { "type": "team", "fatality": true, "killer": -1, "text": "{name}, {name2}, {name3}, and {name4} are caught in an earthquake. Only {name} survives." },
+    { "type": "team", "fatality": true, "killer": -1, "text": "{name}, {name2}, {name3}, and {name4} are caught in an earthquake. Only {name2} survives." }
   ]
 }
