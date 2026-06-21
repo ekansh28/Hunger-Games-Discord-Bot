@@ -130,6 +130,23 @@ function buildStatsEmbed(targetUser, targetMember, stats) {
     return embed;
 }
 
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    const BUMP_IMMUNE_ROLE_ID = '1482008255554125844';
+    const AIDS_ROLE_ID = '1516529671855018004';
+    
+    // Check if they just received the bump role
+    if (!oldMember.roles.cache.has(BUMP_IMMUNE_ROLE_ID) && newMember.roles.cache.has(BUMP_IMMUNE_ROLE_ID)) {
+        // If they have the AIDS role, cure them instantly
+        if (newMember.roles.cache.has(AIDS_ROLE_ID)) {
+            try {
+                await Infection.removeInfection(newMember);
+            } catch (err) {
+                console.error('[AIDS] Failed to automatically cure member on bump:', err);
+            }
+        }
+    }
+});
+
 client.on('messageCreate', async (message) => {
     // ── Infection spreading ───────────────────────────────────────────────────
     if (message.guild && !message.author.bot && message.member && message.mentions.members.size > 0) {
