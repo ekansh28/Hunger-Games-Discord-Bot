@@ -40,7 +40,9 @@ async function handleEditCommand(message) {
         const response = await fetch(imageUrl);
         const imageBlob = await response.blob();
 
-        const client = await Client.connect("timbrooks/instruct-pix2pix");
+        // Provide HF_TOKEN to bypass ZeroGPU quota limits if set in .env
+        const clientOptions = process.env.HF_TOKEN ? { hf_token: process.env.HF_TOKEN } : {};
+        const client = await Client.connect("timbrooks/instruct-pix2pix", clientOptions);
         const result = await client.predict("/generate", {
             input_image: imageBlob,
             instruction: prompt,
