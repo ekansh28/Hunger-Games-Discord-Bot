@@ -303,10 +303,10 @@ client.on('messageCreate', async (message) => {
 
         let visual = "";
         if (width === 0) {
-            visual = "___";
+            visual = "( )";
         } else {
             const spaces = ' '.repeat(width);
-            visual = `(_${spaces}_Y_${spaces}_)`;
+            visual = `(${spaces}Y${spaces})`;
         }
 
         return message.reply(`Your boob size is: **${name}**\n\`${visual}\``);
