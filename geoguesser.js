@@ -41,7 +41,7 @@ async function populateCache() {
 
 function fetchMapillaryData(url) {
     return new Promise((resolve, reject) => {
-        const req = https.get(url, { headers: { 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }, timeout: 5000 }, (res) => {
+        const req = https.get(url, { headers: { 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }, timeout: 8000 }, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
@@ -51,11 +51,16 @@ function fetchMapillaryData(url) {
                     reject(e);
                 }
             });
-        }).on('error', reject);
+        }).on('error', (err) => {
+            // Ignore socket hang up if we deliberately destroyed the request due to timeout
+            if (err.message !== 'socket hang up') {
+                reject(err);
+            }
+        });
         
         req.on('timeout', () => {
             req.destroy();
-            reject(new Error('Mapillary API Request Timeout'));
+            reject(new Error('Mapillary API Request Timeout (8s)'));
         });
     });
 }
@@ -99,7 +104,7 @@ async function getRandomMapillaryLocation() {
                 }
             }
         } catch (e) {
-            console.error("Mapillary fetch error:", e);
+            console.error(`Mapillary fetch error: ${e.message}`);
         }
     }
     return null;
@@ -176,7 +181,12 @@ async function handleGeoGuesser(message) {
                 
             m.channel.send({ embeds: [winEmbed] });
         } else {
-            m.react('❌').catch(() => null);
+            // Only cross-react if the guess is actually a valid country
+            // uniqueCountries is computed in getRandomMapillaryLocation, but we can compute it here or use cities directly
+            const isValidCountry = cities.some(c => c.country.toLowerCase() === normalizedGuess);
+            if (isValidCountry) {
+                m.react('❌').catch(() => null);
+            }
         }
     });
 
