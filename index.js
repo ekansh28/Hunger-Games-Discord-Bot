@@ -141,8 +141,9 @@ client.on('messageCreate', async (message) => {
     }
 
     // ── =stats ────────────────────────────────────────────────────────────────
-    if (message.content.startsWith('=stats')) {
-        const args = message.content.slice(6).trim();
+    if (message.content.startsWith('=stats') || message.content.startsWith('=stat ') || message.content === '=stat' || message.content.startsWith('=s ') || message.content === '=s') {
+        const cmdPrefix = message.content.split(' ')[0];
+        const args = message.content.slice(cmdPrefix.length).trim();
         let targetUser = message.author;
         let targetMember = message.member;
 
@@ -165,8 +166,9 @@ client.on('messageCreate', async (message) => {
     }
 
     // ── =leaderboard ──────────────────────────────────────────────────────────
-    if (message.content.startsWith('=leaderboard')) {
-        const args = message.content.slice(12).trim().toLowerCase();
+    if (message.content.startsWith('=leaderboard') || message.content.startsWith('=lb') || message.content.startsWith('=top') || message.content.startsWith('=board')) {
+        const cmdPrefix = message.content.split(' ')[0];
+        const args = message.content.slice(cmdPrefix.length).trim().toLowerCase();
         const word = args || Stats.TRACKED_WORDS[0];
         
         if (!Stats.TRACKED_WORDS.includes(word)) {
@@ -326,8 +328,10 @@ client.on('messageCreate', async (message) => {
                     name: '📊 Stats & Leaderboards',
                     value: [
                         '`=stats [@user]` -- View your (or another user\'s) stats',
+                        '  *Aliases:* `=stat` `=s`',
                         '`/stats [user]` -- Same, via slash command',
                         '`=leaderboard [word]` -- View the top users for a tracked word',
+                        '  *Aliases:* `=lb` `=top` `=board`',
                         '`/leaderboard [word]` -- Same, via slash command',
                     ].join('\n'),
                     inline: false,
