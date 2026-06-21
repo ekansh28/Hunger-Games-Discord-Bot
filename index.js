@@ -10,6 +10,7 @@ const Infection = require('./infection');
 const Stats = require('./stats');
 const LastFm = require('./utils/lastfm');
 const path = require('path');
+const { handleGeoGuesser } = require('./geoguesser');
 
 const HG_ELIM_ROLE_ID = '1486781924671492266';
 
@@ -282,6 +283,12 @@ client.on('messageCreate', async (message) => {
     // ── =br ───────────────────────────────────────────────────────────────────
     if (contentLower.startsWith('=br')) {
         await handleBrPrefixCommand(message);
+        return;
+    }
+
+    // ── =gg ───────────────────────────────────────────────────────────────────
+    if (contentLower === '=gg' || contentLower === '=geoguesser') {
+        await handleGeoGuesser(message);
         return;
     }
 
