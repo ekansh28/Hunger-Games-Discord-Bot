@@ -278,6 +278,33 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
+    // ── =boob ─────────────────────────────────────────────────────────────────
+    if (contentLower.startsWith('=boob')) {
+        const width = await Stats.getOrGenerateBoobSize(message.author.id);
+        let name = '';
+        if (width === 0) name = "Flat as a board (AA)";
+        else if (width <= 2) name = "A Cup";
+        else if (width <= 4) name = "B Cup";
+        else if (width <= 6) name = "C Cup";
+        else if (width <= 8) name = "D Cup";
+        else if (width <= 10) name = "DD Cup";
+        else if (width <= 15) name = "E Cup";
+        else if (width <= 20) name = "DDDDDDDDDDDDD";
+        else if (width <= 30) name = "Mega Ultra Z+";
+        else if (width <= 40) name = "Galactic Milkers";
+        else name = "Planet Destroyers 🌍";
+
+        let visual = "";
+        if (width === 0) {
+            visual = "___";
+        } else {
+            const spaces = ' '.repeat(width);
+            visual = `(_${spaces}_Y_${spaces}_)`;
+        }
+
+        return message.reply(`Your boob size is: **${name}**\n\`${visual}\``);
+    }
+
     // ── =nichebattle ──────────────────────────────────────────────────────────
     if (contentLower.startsWith('=nichebattle') || contentLower.startsWith('=nb ') || contentLower === '=nb') {
         const cmdPrefix = message.content.split(' ')[0];

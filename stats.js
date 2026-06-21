@@ -52,6 +52,9 @@ async function initDB() {
         await pool.query(`
             ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS lastfm_user VARCHAR(64);
         `);
+        await pool.query(`
+            ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS boob_size INTEGER;
+        `);
         dbInitialized = true;
         console.log('[Stats] Neon PostgreSQL initialized.');
     } catch (err) {
@@ -100,7 +103,37 @@ function getPendingWord(guildId, userId, word) {
     return pendingWordStats.get(key);
 }
 
-// ── Last.fm Users ──────────────────────────────────────────────
+// ── Last.fm & Fun Stats ────────────────────────────────────────
+
+async function getOrGenerateBoobSize(userId) {
+    if (!process.env.DATABASE_URL || !dbInitialized) return Math.floor(Math.random() * 51);
+    const client = await pool.connect();
+    try {
+        const res = await client.query(`
+            SELECT boob_size FROM user_stats 
+            WHERE user_id = $1 AND boob_size IS NOT NULL 
+            LIMIT 1;
+        `, [userId]);
+        
+        if (res.rows.length > 0 && res.rows[0].boob_size !== null) {
+            return res.rows[0].boob_size;
+        }
+
+        const newSize = Math.floor(Math.random() * 51); // 0 to 50
+        await client.query(`
+            INSERT INTO user_stats (guild_id, user_id, boob_size)
+            VALUES ('GLOBAL', $1, $2)
+            ON CONFLICT (guild_id, user_id) DO UPDATE SET boob_size = EXCLUDED.boob_size;
+        `, [userId, newSize]);
+
+        return newSize;
+    } catch (err) {
+        console.error('[Stats] Error getting/generating boob size:', err);
+        return Math.floor(Math.random() * 51);
+    } finally {
+        client.release();
+    }
+}
 
 async function setLastFmUser(userId, username) {
     if (!process.env.DATABASE_URL || !dbInitialized) return;
@@ -408,6 +441,7 @@ module.exports = {
     resetDatabase,
     setLastFmUser,
     getLastFmUser,
+    getOrGenerateBoobSize,
     pool, // export for migration script
     flushStats
 };
