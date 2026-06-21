@@ -30,6 +30,7 @@
     "dotenv": "^17.4.2",
     "libsodium-wrappers": "^0.7.15",
     "node-fetch": "^3.3.2",
+    "replicate": "^1.4.0",
     "skia-canvas": "^3.0.8",
     "ws": "^8.18.0"
   }

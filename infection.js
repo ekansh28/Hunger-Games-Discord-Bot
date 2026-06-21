@@ -740,7 +740,7 @@ async function handleVirusCommand(message) {
     const guild = message.guild;
 
     if (!cmd) {
-        return message.channel.send(`<@${message.author.id}> Usage: `=virus create <Name> <Color>` or `=virus top` or `=virus rename/color/icon``);
+        return message.channel.send('<@' + message.author.id + '> Usage: `=virus create <Name> <Color>` or `=virus top` or `=virus rename/color/icon`');
     }
 
     if (cmd === 'create') {
@@ -749,7 +749,7 @@ async function handleVirusCommand(message) {
         const colorInput = resolveVirusColor(rawColor);
 
         if (!name || !colorInput) {
-            return message.channel.send(`<@${message.author.id}> Usage: `=virus create <Name> <Color>`\nExample: `=virus create T-Virus red` or `=virus create T-Virus #ff0000``);
+            return message.channel.send('<@' + message.author.id + '> Usage: `=virus create <Name> <Color>`\nExample: `=virus create T-Virus red` or `=virus create T-Virus #ff0000`');
         }
 
         const forbiddenType = isForbiddenName(name);
@@ -845,12 +845,12 @@ async function handleVirusCommand(message) {
     const myVirusId = Object.keys(viruses[guild.id] || {}).find(vid => viruses[guild.id][vid].ownerId === message.author.id);
 
     if (cmd === 'rename') {
-        if (!myVirusId) return message.channel.send(`<@${message.author.id}> You do not own any viruses. Create one first with `=virus create`!`);
+        if (!myVirusId) return message.channel.send('<@' + message.author.id + '> You do not own any viruses. Create one first with `=virus create`!');
         const myRole = guild.roles.cache.get(myVirusId);
         if (!myRole) return message.channel.send(`<@${message.author.id}> Your virus role is missing.`);
 
         const newName = args.slice(2).join(' ');
-        if (!newName) return message.channel.send(`<@${message.author.id}> Usage: `=virus rename <NewName>``);
+        if (!newName) return message.channel.send('<@' + message.author.id + '> Usage: `=virus rename <NewName>`');
 
         const forbiddenType = isForbiddenName(newName);
         if (forbiddenType === 'mod') {
@@ -872,14 +872,14 @@ async function handleVirusCommand(message) {
     }
 
     if (cmd === 'color') {
-        if (!myVirusId) return message.channel.send(`<@${message.author.id}> You do not own any viruses. Create one first with `=virus create`!`);
+        if (!myVirusId) return message.channel.send('<@' + message.author.id + '> You do not own any viruses. Create one first with `=virus create`!');
         const myRole = guild.roles.cache.get(myVirusId);
         if (!myRole) return message.channel.send(`<@${message.author.id}> Your virus role is missing.`);
 
         const rawColor = args[2];
         const newColor = resolveVirusColor(rawColor);
         if (!newColor) {
-            return message.channel.send(`<@${message.author.id}> Usage: `=virus color <Color>`\nExample: `=virus color blue` or `=virus color #0000ff``);
+            return message.channel.send('<@' + message.author.id + '> Usage: `=virus color <Color>`\nExample: `=virus color blue` or `=virus color #0000ff`');
         }
 
         try {
@@ -895,7 +895,7 @@ async function handleVirusCommand(message) {
     }
 
     if (cmd === 'icon') {
-        if (!myVirusId) return message.channel.send(`<@${message.author.id}> You do not own any viruses. Create one first with `=virus create`!`);
+        if (!myVirusId) return message.channel.send('<@' + message.author.id + '> You do not own any viruses. Create one first with `=virus create`!');
         const myRole = guild.roles.cache.get(myVirusId);
         if (!myRole) return message.channel.send(`<@${message.author.id}> Your virus role is missing.`);
 
@@ -909,7 +909,7 @@ async function handleVirusCommand(message) {
                 // Try to set it as a unicode emoji
                 const emoji = args[2];
                 if (!emoji) {
-                    return message.channel.send(`<@${message.author.id}> Usage: `=virus icon <Emoji>` OR attach an image file with the command `=virus icon`.`);
+                    return message.channel.send('<@' + message.author.id + '> Usage: `=virus icon <Emoji>` OR attach an image file with the command `=virus icon`.');
                 }
                 await myRole.edit({ unicodeEmoji: emoji }, `Virus icon changed by ${message.author.username}`);
                 return message.channel.send(`<@${message.author.id}> Your virus icon has been updated to ${emoji}!`);

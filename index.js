@@ -209,6 +209,13 @@ client.on('messageCreate', async (message) => {
 
     const contentLower = message.content.toLowerCase();
 
+    // ── =edit (Flux Image Editor) ─────────────────────────────────────────────
+    if (contentLower.startsWith('=edit ') || contentLower === '=edit') {
+        const handleEditCommand = require('./editImage');
+        await handleEditCommand(message);
+        return;
+    }
+
     // ── =p / =pt (Pirate Translator) ──────────────────────────────────────────
     if (contentLower === '=p' || contentLower === '=pt' || contentLower.startsWith('=p ') || contentLower.startsWith('=pt ')) {
         const handlePirateCommand = require('./pirate');
