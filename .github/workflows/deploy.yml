@@ -1,0 +1,20 @@
+name: Deploy to VPS
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 0.0.0.0 # <-- CHANGE THIS TO YOUR ACTUAL VPS IP ADDRESS!
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd ~/apps/Hunger-Games-Discord-Bot
+            git pull origin main
+            npm install --ignore-scripts
+            pm2 restart all

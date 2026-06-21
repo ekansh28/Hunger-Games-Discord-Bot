@@ -914,7 +914,7 @@ async function startGameSimulation(channel, gameState, guild) {
         console.warn('[HG] Game ended with no survivors (mutual death on final players).');
         await channel.send({
             embeds: [new EmbedBuilder()
-                .setTitle('NO VICTOR')
+                .setTitle('NO ONE WON')
                 .setDescription('The last tributes have fallen simultaneously. There is no winner.\n\n*The Capitol is displeased.*')
                 .setColor('#FF4444')
                 .setTimestamp()]
