@@ -1028,4 +1028,5 @@ module.exports = {
     handleTreeCommand,
     handleVirusCommand,
     handleMessage,
+    load,
 };

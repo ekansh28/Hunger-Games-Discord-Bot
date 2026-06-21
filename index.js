@@ -93,7 +93,7 @@ const leaderboardSlashCommand = new SlashCommandBuilder()
             .addChoices(...Stats.TRACKED_WORDS.map(w => ({ name: w, value: w })))
     );
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     populateCache();
     await Infection.load();
