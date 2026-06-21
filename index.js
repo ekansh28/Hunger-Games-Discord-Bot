@@ -141,6 +141,8 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
+    const contentLower = message.content.toLowerCase();
+
     // ── =stats ────────────────────────────────────────────────────────────────
     if (message.content.startsWith('=stats') || message.content.startsWith('=stat ') || message.content === '=stat' || message.content.startsWith('=s ') || message.content === '=s') {
         const cmdPrefix = message.content.split(' ')[0];
