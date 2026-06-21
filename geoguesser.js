@@ -20,6 +20,25 @@ const countryAliases = {
 
 const activeGames = new Set(); // Stores channel IDs
 
+const locationCache = [];
+let isFetchingCache = false;
+
+async function populateCache() {
+    if (isFetchingCache) return;
+    isFetchingCache = true;
+    try {
+        while (locationCache.length < 3) {
+            const loc = await getRandomMapillaryLocation();
+            if (loc) {
+                locationCache.push(loc);
+            }
+        }
+    } catch (e) {
+        console.error("Cache populate error:", e);
+    }
+    isFetchingCache = false;
+}
+
 function fetchMapillaryData(url) {
     return new Promise((resolve, reject) => {
         const req = https.get(url, { headers: { 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }, timeout: 5000 }, (res) => {
@@ -42,8 +61,13 @@ function fetchMapillaryData(url) {
 }
 
 async function getRandomMapillaryLocation() {
+    const uniqueCountries = [...new Set(cities.map(c => c.country))];
+
     for (let attempt = 0; attempt < 5; attempt++) {
-        const city = cities[Math.floor(Math.random() * cities.length)];
+        // Pick a country uniformly at random to ensure equal chances
+        const randomCountry = uniqueCountries[Math.floor(Math.random() * uniqueCountries.length)];
+        const countryCities = cities.filter(c => c.country === randomCountry);
+        const city = countryCities[Math.floor(Math.random() * countryCities.length)];
         
         // Randomize the bbox slightly around the city center to get diverse images
         const latOffset = (Math.random() - 0.5) * 0.05;
@@ -90,14 +114,26 @@ async function handleGeoGuesser(message) {
 
     activeGames.add(channelId);
     
-    // Send loading message since Mapillary fetch might take a second
-    const loadingMsg = await message.channel.send('Loading a random location from the world...');
+    // Pop from cache if available
+    let location = locationCache.shift();
+    let loadingMsg = null;
+    
+    // Kick off background task to refill cache
+    populateCache();
 
-    const location = await getRandomMapillaryLocation();
+    if (!location) {
+        // Cache was empty, fetch dynamically
+        loadingMsg = await message.channel.send('Loading a random location from the world...');
+        location = await getRandomMapillaryLocation();
+    }
     
     if (!location) {
         activeGames.delete(channelId);
-        return loadingMsg.edit('Failed to find a location. Please try again!');
+        if (loadingMsg) {
+            return loadingMsg.edit('Failed to find a location. Please try again!');
+        } else {
+            return message.channel.send('Failed to find a location. Please try again!');
+        }
     }
 
     const targetCountry = location.country.toLowerCase();
@@ -111,7 +147,9 @@ async function handleGeoGuesser(message) {
         .setColor('#0099ff')
         .setFooter({ text: 'GeoGuesser' });
 
-    await loadingMsg.delete().catch(() => null);
+    if (loadingMsg) {
+        await loadingMsg.delete().catch(() => null);
+    }
     await message.channel.send({ embeds: [embed], files: [attachment] });
 
     // Set up message collector
@@ -155,5 +193,6 @@ async function handleGeoGuesser(message) {
 }
 
 module.exports = {
-    handleGeoGuesser
+    handleGeoGuesser,
+    populateCache // export to initialize on bot startup
 };

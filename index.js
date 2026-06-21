@@ -10,7 +10,7 @@ const Infection = require('./infection');
 const Stats = require('./stats');
 const LastFm = require('./utils/lastfm');
 const path = require('path');
-const { handleGeoGuesser } = require('./geoguesser');
+const { handleGeoGuesser, populateCache } = require('./geoguesser');
 
 const HG_ELIM_ROLE_ID = '1486781924671492266';
 
@@ -95,6 +95,7 @@ const leaderboardSlashCommand = new SlashCommandBuilder()
 
 client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
+    populateCache();
     try {
         const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         await rest.put(
