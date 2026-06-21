@@ -1,9 +1,4 @@
-const Replicate = require('replicate');
-
-// Initialize Replicate API
-const replicate = new Replicate({
-    auth: process.env.REPLICATE_API_TOKEN,
-});
+const { Client } = require("@gradio/client");
 
 async function handleEditCommand(message) {
     const args = message.content.trim().split(/\s+/);
@@ -41,14 +36,25 @@ async function handleEditCommand(message) {
         // Indicate processing
         await message.channel.sendTyping();
 
-        const output = await replicate.run("black-forest-labs/flux-2-pro", {
-            input: {
-                prompt: prompt,
-                input_images: [imageUrl]
-            }
+        // Fetch image to a Blob as required by Gradio
+        const response = await fetch(imageUrl);
+        const imageBlob = await response.blob();
+
+        const client = await Client.connect("timbrooks/instruct-pix2pix");
+        const result = await client.predict("/generate", {
+            input_image: imageBlob,
+            instruction: prompt,
+            steps: 50,
+            randomize_seed: "Randomize Seed",
+            seed: Math.floor(Math.random() * 1000000), // Randomize seed manually
+            randomize_cfg: "Fix CFG",
+            text_cfg_scale: 7.5,
+            image_cfg_scale: 1.5,
         });
 
-        const finalUrl = output.url ? output.url() : String(output);
+        // The edited image is element [3] in the returned list
+        const outImage = result.data[3];
+        const finalUrl = outImage.url ? outImage.url : outImage;
 
         await message.channel.send({
             content: `<@${message.author.id}> 🎨 **Edited Image:**\n> *${prompt}*`,
@@ -56,7 +62,7 @@ async function handleEditCommand(message) {
         });
 
     } catch (err) {
-        console.error('[FluxEdit] Error editing image:', err);
+        console.error('[GradioEdit] Error editing image:', err);
         return message.channel.send(`<@${message.author.id}> ❌ Failed to edit the image. Error: ${err.message}`);
     }
 }
