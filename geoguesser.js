@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const https = require('https');
 const cities = require('./cities.json');
 const MAPILLARY_TOKEN = process.env.MAPILLARY_TOKEN;
@@ -84,14 +84,16 @@ async function handleGeoGuesser(message) {
 
     const targetCountry = location.country.toLowerCase();
 
+    const attachment = new AttachmentBuilder(location.image_url, { name: 'geoguesser.jpg' });
+
     const embed = new EmbedBuilder()
         .setTitle('GeoGuesser')
         .setDescription('Where in the world is this? Type the name of the country in the chat to win!\n\nYou have 30 seconds.')
-        .setImage(location.image_url)
+        .setImage('attachment://geoguesser.jpg')
         .setColor('#0099ff')
         .setFooter({ text: 'GeoGuesser' });
 
-    await loadingMsg.edit({ content: null, embeds: [embed] });
+    await loadingMsg.edit({ content: null, embeds: [embed], files: [attachment] });
 
     // Set up message collector
     const filter = (m) => !m.author.bot;
