@@ -39,7 +39,7 @@ async function getRandomMapillaryLocation() {
         const maxLat = centerLat + 0.005;
         
         const bbox = `${minLon},${minLat},${maxLon},${maxLat}`;
-        const url = `https://graph.mapillary.com/images?fields=id&bbox=${bbox}&limit=10`;
+        const url = `https://graph.mapillary.com/images?fields=id,thumb_2048_url&bbox=${bbox}&limit=10`;
         
         try {
             const res = await fetchMapillaryData(url);
@@ -47,12 +47,10 @@ async function getRandomMapillaryLocation() {
                 // Pick a random image from the results
                 const randomImg = res.data[Math.floor(Math.random() * res.data.length)];
                 
-                const imgUrlRes = await fetchMapillaryData(`https://graph.mapillary.com/${randomImg.id}?fields=thumb_2048_url`);
-                
-                if (imgUrlRes.thumb_2048_url) {
+                if (randomImg.thumb_2048_url) {
                     return {
                         country: city.country,
-                        image_url: imgUrlRes.thumb_2048_url
+                        image_url: randomImg.thumb_2048_url
                     };
                 }
             }
