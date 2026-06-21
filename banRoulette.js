@@ -207,123 +207,78 @@ async function renderCanvas(session) {
     const cx = CANVAS_W / 2;
     const cy = CANVAS_H / 2;
 
-    // ── Background ────────────────────────────────────────────
-    const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, CANVAS_W * 0.7);
-    bg.addColorStop(0, '#2c1a1a');
-    bg.addColorStop(1, '#0d0608');
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-    // Subtle ring glow
-    ctx.strokeStyle = 'rgba(180,30,30,0.10)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 10]);
-    ctx.beginPath(); ctx.arc(cx, cy, CANVAS_W * 0.42, 0, Math.PI * 2); ctx.stroke();
-    ctx.setLineDash([]);
+    // Fully transparent background — PNG alpha carries through to Discord
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
     const players = session.players;
     const n = players.length;
 
     if (n === 0) {
-        // Empty lobby
-        ctx.fillStyle = 'rgba(200,200,200,0.5)';
-        ctx.font = `bold 40px "${FONT_FAMILY}"`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('Waiting for players…', cx, cy);
+        // Empty lobby: just a faint dashed circle hint, nothing else
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 14]);
+        ctx.beginPath(); ctx.arc(cx, cy, CANVAS_W * 0.36, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
         return canvas.toBuffer('image/png');
     }
 
     const useViewport = n > VIEWPORT_SIZE;
 
     if (!useViewport) {
-        // ── Simple ring (all players fit) ────────────────────────
+        // ── Simple ring ───────────────────────────────────────────
         const ringR = Math.max(180, Math.min(450, CANVAS_W * 0.38 - (n > 4 ? 0 : 60)));
         const positions = ringPositions(n, cx, cy, ringR);
         const r = avatarRadiusForCount(n);
 
-        // Draw faint connector lines
-        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < n; i++) {
-            const a = positions[i], b = positions[(i + 1) % n];
-            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-        }
-
         for (let i = 0; i < n; i++) {
             const p = players[i];
             const pos = positions[i];
-            const isActive = (session.status === 'playing' && i === session.turnIndex);
+            const isActive = session.status === 'playing' && i === session.turnIndex;
             await drawAvatar(ctx, p, pos.x, pos.y, r, isActive, p.eliminated, 1.0);
-            await drawUsername(ctx, p, pos.x, pos.y, r);
+            // Usernames only during active game — tiny, ghosted
+            if (session.status === 'playing') {
+                await drawUsername(ctx, p, pos.x, pos.y, r);
+            }
         }
 
     } else {
         // ── Viewport ring (9–20 players) ──────────────────────────
-        // We always show VIEWPORT_SIZE slots in a ring.
-        // The active player sits at the top (index 0 in ring coords).
-        // We compute which slice of `players` to show, with wrap-around.
-
         const half = Math.floor(VIEWPORT_SIZE / 2);
         const active = session.status === 'playing' ? session.turnIndex : 0;
         const ringR = CANVAS_W * 0.38;
         const r = avatarRadiusForCount(VIEWPORT_SIZE);
 
-        // Slots: active player is placed at ring index `half` (vertically centred-ish)
-        // so we can show `half` before and `half` after.
-        const windowIndices = [];  // player array indices for each ring slot
+        const windowIndices = [];
         for (let slot = 0; slot < VIEWPORT_SIZE; slot++) {
             const offset = slot - half;
-            let pidx = ((active + offset) % n + n) % n;
-            windowIndices.push(pidx);
+            windowIndices.push(((active + offset) % n + n) % n);
         }
 
-        // One extra peek on each side (outside the window)
         const peekBefore = ((active - half - 1) % n + n) % n;
         const peekAfter = ((active + half + 1) % n + n) % n;
-
         const positions = ringPositions(VIEWPORT_SIZE, cx, cy, ringR);
-
-        // Connector lines
-        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < VIEWPORT_SIZE; i++) {
-            const a = positions[i], b = positions[(i + 1) % VIEWPORT_SIZE];
-            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-        }
 
         for (let slot = 0; slot < VIEWPORT_SIZE; slot++) {
             const pidx = windowIndices[slot];
             const p = players[pidx];
             const pos = positions[slot];
-            const isActive = (session.status === 'playing' && pidx === active);
+            const isActive = session.status === 'playing' && pidx === active;
             await drawAvatar(ctx, p, pos.x, pos.y, r, isActive, p.eliminated, 1.0);
-            await drawUsername(ctx, p, pos.x, pos.y, r);
+            if (session.status === 'playing') {
+                await drawUsername(ctx, p, pos.x, pos.y, r);
+            }
         }
 
-        // Peek avatars (ghosted)
-        const peekPosBefore = ringPositions(VIEWPORT_SIZE + 2, cx, cy, ringR)[0];  // just off first slot
-        const peekPosAfter = ringPositions(VIEWPORT_SIZE + 2, cx, cy, ringR)[VIEWPORT_SIZE + 1];
-        const smallR = r * 0.65;
-
-        // We approximate peek positions as slightly beyond the ring edges
+        // Peek avatars — very faint, slightly smaller
+        const smallR = r * 0.6;
         const p0 = positions[0];
         const pV = positions[VIEWPORT_SIZE - 1];
         const edgeBefore = extrapolateEdge(cx, cy, p0, ringR, smallR);
         const edgeAfter = extrapolateEdge(cx, cy, pV, ringR, smallR);
-
-        await drawAvatar(ctx, players[peekBefore], edgeBefore.x, edgeBefore.y, smallR, false, players[peekBefore].eliminated, PEEK_ALPHA);
-        await drawAvatar(ctx, players[peekAfter], edgeAfter.x, edgeAfter.y, smallR, false, players[peekAfter].eliminated, PEEK_ALPHA);
-
-        // Show total count and "frame" indicator
-        const shownFrom = ((active - half) % n + n) % n + 1;
-        ctx.fillStyle = 'rgba(200,200,200,0.55)';
-        ctx.font = `22px "${FONT_FAMILY}"`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        ctx.fillText(`Showing ${VIEWPORT_SIZE} of ${n} players`, cx, CANVAS_H - 18);
+        await drawAvatar(ctx, players[peekBefore], edgeBefore.x, edgeBefore.y, smallR, false, players[peekBefore].eliminated, 0.22);
+        await drawAvatar(ctx, players[peekAfter], edgeAfter.x, edgeAfter.y, smallR, false, players[peekAfter].eliminated, 0.22);
     }
-
-    // Centre label (status / gun)
-    drawCentreLabel(ctx, cx, cy, session);
 
     return canvas.toBuffer('image/png');
 }
@@ -348,6 +303,7 @@ async function drawAvatar(ctx, player, x, y, r, isActive, isEliminated, alpha) {
     ctx.save();
     ctx.globalAlpha = alpha;
 
+    // Avatar image clipped to circle
     if (player.avatarBuffer) {
         ctx.save();
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip();
@@ -358,7 +314,8 @@ async function drawAvatar(ctx, player, x, y, r, isActive, isEliminated, alpha) {
             const id = tc.getImageData(0, 0, r * 2, r * 2);
             for (let i = 0; i < id.data.length; i += 4) {
                 const g = 0.299 * id.data[i] + 0.587 * id.data[i + 1] + 0.114 * id.data[i + 2];
-                id.data[i] = id.data[i + 1] = id.data[i + 2] = g * 0.55;
+                id.data[i] = id.data[i + 1] = id.data[i + 2] = g * 0.45;
+                id.data[i + 3] = Math.floor(id.data[i + 3] * 0.6);  // fade out eliminated
             }
             tc.putImageData(id, 0, 0);
             ctx.drawImage(tmp, x - r, y - r, r * 2, r * 2);
@@ -368,81 +325,40 @@ async function drawAvatar(ctx, player, x, y, r, isActive, isEliminated, alpha) {
         ctx.restore();
     }
 
-    // Border ring
+    // Active player: single thin glowing ring, nothing else
     if (isActive) {
-        ctx.shadowColor = '#ff2222';
-        ctx.shadowBlur = 32;
-        ctx.strokeStyle = '#E74C3C';
-        ctx.lineWidth = BORDER_WIDTH;
-        ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke();
+        ctx.shadowColor = 'rgba(255, 60, 60, 0.6)';
+        ctx.shadowBlur = 18;
+        ctx.strokeStyle = 'rgba(255, 80, 80, 0.9)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(x, y, r + 3, 0, Math.PI * 2); ctx.stroke();
         ctx.shadowBlur = 0;
-    } else if (!isEliminated) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(x, y, r + 1, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // Eliminated X
+    // Eliminated: single thin diagonal line, very minimal
     if (isEliminated) {
-        ctx.strokeStyle = '#cc1111cc';
-        ctx.lineWidth = CROSS_WIDTH;
+        ctx.strokeStyle = 'rgba(200, 30, 30, 0.55)';
+        ctx.lineWidth = Math.max(2, r * 0.07);
         ctx.lineCap = 'round';
-        ctx.shadowColor = '#ff000088';
-        ctx.shadowBlur = 14;
-        const o = r * 0.65;
+        const o = r * 0.72;
         ctx.beginPath(); ctx.moveTo(x - o, y - o); ctx.lineTo(x + o, y + o); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(x + o, y - o); ctx.lineTo(x - o, y + o); ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#444';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(x, y, r + 1, 0, Math.PI * 2); ctx.stroke();
     }
 
     ctx.restore();
 }
 
 async function drawUsername(ctx, player, x, y, r) {
-    const name = player.displayName || player.username;
-    const isElim = player.eliminated;
+    const name = (player.displayName || player.username);
     ctx.save();
-    ctx.font = `bold ${Math.round(r * 0.28)}px "${FONT_FAMILY}"`;
+    ctx.font = `${Math.round(r * 0.22)}px "${FONT_FAMILY}"`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = isElim ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,0.9)';
-    // Soft shadow for legibility
-    ctx.shadowColor = '#000';
-    ctx.shadowBlur = 6;
-    ctx.fillText(name.length > 14 ? name.slice(0, 13) + '…' : name, x, y + r + 8);
+    ctx.fillStyle = player.eliminated
+        ? 'rgba(255,255,255,0.18)'
+        : 'rgba(255,255,255,0.40)';
+    ctx.fillText(name.length > 14 ? name.slice(0, 13) + '…' : name, x, y + r + 6);
     ctx.restore();
 }
-
-function drawCentreLabel(ctx, cx, cy, session) {
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    if (session.status === 'lobby') {
-        ctx.fillStyle = 'rgba(255,220,80,0.85)';
-        ctx.font = `bold 34px "${FONT_FAMILY}"`;
-        ctx.shadowColor = '#000'; ctx.shadowBlur = 8;
-        ctx.fillText('LOBBY', cx, cy - 20);
-        ctx.font = `22px "${FONT_FAMILY}"`;
-        ctx.fillStyle = 'rgba(200,200,200,0.7)';
-        ctx.fillText(`${session.players.length} joined`, cx, cy + 18);
-    } else if (session.status === 'playing') {
-        // Revolver icon (text approximation)
-        ctx.font = `bold 46px "${FONT_FAMILY}"`;
-        ctx.fillStyle = 'rgba(220,30,30,0.9)';
-        ctx.shadowColor = '#ff000066'; ctx.shadowBlur = 20;
-        ctx.fillText('🔫', cx, cy);
-    } else {
-        ctx.font = `bold 36px "${FONT_FAMILY}"`;
-        ctx.fillStyle = 'rgba(255,215,0,0.9)';
-        ctx.fillText('GAME OVER', cx, cy);
-    }
-    ctx.restore();
-}
-
 // ── Build button rows ──────────────────────────────────────────
 function buildLobbyRow(session) {
     const canStart = session.players.length >= 2;
