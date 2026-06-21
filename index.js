@@ -414,45 +414,75 @@ client.on('messageCreate', async (message) => {
 
     // ── =play ─────────────────────────────────────────────────────────────────
     if (message.content === '=play') {
-        if (!isAuthorized(message.member || message.author)) {
-            return message.reply('Only authorized users can start the game lobby.');
-        }
         if (gameStates.has(message.channel.id)) {
             return message.reply('A game is already active in this channel. Use `=cancel` to end it first.');
         }
 
-        const participants = new Map();
-        gameStates.set(message.channel.id, {
-            participants,
-            deadParticipants: new Map(),
-            status: 'lobby',
-            gameLogic: null,
-            cancelled: false
-        });
+        const openLobby = async (hostUser) => {
+            const participants = new Map();
+            gameStates.set(message.channel.id, {
+                participants,
+                deadParticipants: new Map(),
+                status: 'lobby',
+                gameLogic: null,
+                cancelled: false,
+                hostId: hostUser.id
+            });
 
-        const embed = new EmbedBuilder()
-            .setTitle('Hunger Games Simulation Lobby')
-            .setDescription('**Welcome to the arena!**\n\nClick the button below to join the deadly competition.\n\n**Participants:** 0/24')
-            .setColor('#FFD700')
-            .setTimestamp();
+            const embed = new EmbedBuilder()
+                .setTitle('Hunger Games Simulation Lobby')
+                .setDescription(`**Welcome to the arena!**\nHosted by **${hostUser.username}**\n\nClick the button below to join the deadly competition.\n\n**Participants:** 0/24`)
+                .setColor('#FFD700')
+                .setTimestamp();
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('join_game').setLabel('Join Game').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('start_game').setLabel('Start Game').setStyle(ButtonStyle.Danger).setDisabled(true)
-        );
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('join_game').setLabel('Join Game').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('start_game').setLabel('Start Game').setStyle(ButtonStyle.Danger).setDisabled(true)
+            );
 
-        await message.reply({ embeds: [embed], components: [row] });
+            await message.channel.send({ embeds: [embed], components: [row] });
+        };
+
+        if (!isAuthorized(message.member || message.author)) {
+            const voteMsg = await message.reply('You are not authorized to start a game! However, if this message gets 4 ✅ reactions, you will be allowed to host it.');
+            await voteMsg.react('✅');
+            
+            const filter = (reaction) => reaction.emoji.name === '✅';
+            const collector = voteMsg.createReactionCollector({ filter, time: 300000 }); // 5 minutes
+
+            collector.on('collect', async (reaction) => {
+                // reaction.count includes the bot's reaction, so 4 means 3 users + 1 bot, or just 4 reacts total
+                if (reaction.count >= 4) {
+                    collector.stop('passed');
+                    if (gameStates.has(message.channel.id)) {
+                        await message.channel.send('A game was already started by someone else in this channel!');
+                    } else {
+                        await openLobby(message.author);
+                    }
+                }
+            });
+
+            collector.on('end', (collected, reason) => {
+                if (reason !== 'passed') {
+                    voteMsg.edit('Voting failed. Not enough ✅ reactions in time.').catch(() => null);
+                }
+            });
+            return;
+        }
+
+        await openLobby(message.author);
         return;
     }
 
     // ── =cancel ───────────────────────────────────────────────────────────────
     if (message.content === '=cancel') {
-        if (!isAuthorized(message.member || message.author)) {
-            return message.reply('Only authorized users can cancel the game.');
-        }
         const gameState = gameStates.get(message.channel.id);
         if (!gameState) {
             return message.reply('No active game in this channel.');
+        }
+
+        if (!isAuthorized(message.member || message.author) && message.author.id !== gameState.hostId) {
+            return message.reply('Only authorized users or the game host can cancel the game.');
         }
 
         gameState.cancelled = true;
@@ -787,7 +817,9 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         if (interaction.customId === 'start_game') {
-            if (!isAuthorized(interaction.member || interaction.user)) return interaction.reply({ content: 'Only authorized users can start the game!', flags: 64 });
+            if (!isAuthorized(interaction.member || interaction.user) && interaction.user.id !== gameState.hostId) {
+                return interaction.reply({ content: 'Only authorized users or the lobby host can start the game!', flags: 64 });
+            }
             if (gameState.participants.size < 4) return interaction.reply({ content: 'At least 4 participants are needed!', flags: 64 });
 
             gameState.status = 'running';
