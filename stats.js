@@ -337,6 +337,26 @@ function trackMessage(guildId, userId, messageContent) {
     return processedWords;
 }
 
+// ── Admin Utilities ──────────────────────────────────────────
+
+async function resetDatabase() {
+    if (!process.env.DATABASE_URL || !dbInitialized) return;
+    pendingUserStats.clear();
+    pendingWordStats.clear();
+    userWordCooldowns.clear();
+    lastMessageState.clear();
+
+    const client = await pool.connect();
+    try {
+        await client.query('TRUNCATE TABLE user_stats, word_stats');
+        console.log('[Stats] Database truncated by admin.');
+    } catch (err) {
+        console.error('[Stats] Error resetting database:', err);
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     TRACKED_WORDS,
     addHgWin,
@@ -346,6 +366,7 @@ module.exports = {
     getStats,
     getLeaderboard,
     trackMessage,
+    resetDatabase,
     pool, // export for migration script
     flushStats
 };

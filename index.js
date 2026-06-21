@@ -193,6 +193,15 @@ client.on('messageCreate', async (message) => {
         return message.reply({ embeds: [embed] });
     }
 
+    // ── =resetdb ──────────────────────────────────────────────────────────────
+    if (message.content === '=resetdb') {
+        if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
+            return message.reply('Only the main admin can reset the database.');
+        }
+        await Stats.resetDatabase();
+        return message.reply('✅ **The database has been completely reset.** All stats are wiped.');
+    }
+
     // ── =alabama ──────────────────────────────────────────────────────────────
     if (message.content === '=alabama') {
         if (!isAuthorized(message.member || message.author)) {
@@ -334,7 +343,7 @@ client.on('messageCreate', async (message) => {
                 },
                 {
                     name: '🔧 Other',
-                    value: '`=test` -- Test file attachment (debug)\n`=help` -- Show this message',
+                    value: '`=test` -- Test file attachment (debug)\n`=help` -- Show this message\n`=resetdb` -- Wipe the database *(admin only)*',
                     inline: false,
                 },
             )
