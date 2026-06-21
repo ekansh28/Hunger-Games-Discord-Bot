@@ -93,7 +93,8 @@ async function handleGeoGuesser(message) {
         .setColor('#0099ff')
         .setFooter({ text: 'GeoGuesser' });
 
-    await loadingMsg.edit({ content: null, embeds: [embed], files: [attachment] });
+    await loadingMsg.delete().catch(() => null);
+    await message.channel.send({ embeds: [embed], files: [attachment] });
 
     // Set up message collector
     const filter = (m) => !m.author.bot;
