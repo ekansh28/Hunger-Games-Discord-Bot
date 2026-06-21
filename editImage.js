@@ -173,12 +173,33 @@ async function handleEditCommand(message) {
 
         // 6. Fetch resulting image
         const finalImgRes = await fetch(`${COMFY_URL}/view?filename=${outputImageName}&type=output`);
-        const finalImgBuffer = await finalImgRes.arrayBuffer();
+        const finalImgArrayBuffer = await finalImgRes.arrayBuffer();
+        const rawFinalImgBuffer = Buffer.from(finalImgArrayBuffer);
+
+        // 7. Resize final image to 512px max before sending to Discord
+        const finalImg = await loadImage(rawFinalImgBuffer);
+        let finalWidth = finalImg.width;
+        let finalHeight = finalImg.height;
+        
+        if (finalWidth > MAX_SIZE || finalHeight > MAX_SIZE) {
+            if (finalWidth > finalHeight) {
+                finalHeight = Math.round((finalHeight * MAX_SIZE) / finalWidth);
+                finalWidth = MAX_SIZE;
+            } else {
+                finalWidth = Math.round((finalWidth * MAX_SIZE) / finalHeight);
+                finalHeight = MAX_SIZE;
+            }
+        }
+
+        const finalCanvas = createCanvas(finalWidth, finalHeight);
+        const finalCtx = finalCanvas.getContext('2d');
+        finalCtx.drawImage(finalImg, 0, 0, finalWidth, finalHeight);
+        const finalResizedBuffer = finalCanvas.toBuffer('image/png');
 
         await message.channel.send({
             content: `<@${message.author.id}> 🎨 **Edited Image:**\n> *${prompt}*`,
             files: [{
-                attachment: Buffer.from(finalImgBuffer),
+                attachment: finalResizedBuffer,
                 name: 'edited_image.png'
             }]
         });
