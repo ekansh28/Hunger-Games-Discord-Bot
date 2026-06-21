@@ -309,6 +309,60 @@ class ImageGenerator {
 
         return canvas.toBuffer('image/png');
     }
+
+    async generateNicheBattleImage(avatarUrl1, avatarUrl2) {
+        const width = 600;
+        const height = 300;
+        const canvas = createCanvas(width, height);
+        const ctx = canvas.getContext('2d');
+
+        // Background
+        ctx.fillStyle = '#2b2d31';
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw VS Text in center
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = `bold 60px "${FONT_FAMILY}"`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('VS', width / 2, height / 2);
+
+        // Avatars
+        const avatarSize = 200;
+        const yPos = (height - avatarSize) / 2;
+        const xPos1 = 50;
+        const xPos2 = width - avatarSize - 50;
+
+        try {
+            const [avatar1, avatar2] = await Promise.all([
+                this.loadAvatar(avatarUrl1),
+                this.loadAvatar(avatarUrl2)
+            ]);
+
+            // Draw Avatar 1
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(xPos1 + avatarSize / 2, yPos + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(avatar1, xPos1, yPos, avatarSize, avatarSize);
+            ctx.restore();
+
+            // Draw Avatar 2
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(xPos2 + avatarSize / 2, yPos + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(avatar2, xPos2, yPos, avatarSize, avatarSize);
+            ctx.restore();
+
+        } catch (err) {
+            console.error('[ImageGenerator] Error loading avatars for niche battle:', err);
+        }
+
+        return canvas.toBuffer('image/png');
+    }
 }
 
 module.exports = ImageGenerator;

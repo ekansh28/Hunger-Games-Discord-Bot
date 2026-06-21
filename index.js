@@ -8,6 +8,7 @@ const setupMusic = require('./music');
 const { authorizedUsers, authorizedRoles, isAuthorized } = require('./authorization');
 const Infection = require('./infection');
 const Stats = require('./stats');
+const LastFm = require('./utils/lastfm');
 const path = require('path');
 
 const HG_ELIM_ROLE_ID = '1486781924671492266';
@@ -193,6 +194,117 @@ client.on('messageCreate', async (message) => {
         }
         
         return message.reply({ embeds: [embed] });
+    }
+
+    // ── =setlastfm ────────────────────────────────────────────────────────────
+    if (contentLower.startsWith('=setlastfm')) {
+        const username = message.content.slice(10).trim();
+        if (!username) return message.reply('Please provide your Last.fm username. Usage: `=setlastfm <username>`');
+        await Stats.setLastFmUser(message.author.id, username);
+        return message.reply(`✅ Linked Last.fm account: **${username}**`);
+    }
+
+    // ── =nichemeter ───────────────────────────────────────────────────────────
+    if (contentLower.startsWith('=nichemeter') || contentLower.startsWith('=nm ') || contentLower === '=nm') {
+        const cmdPrefix = message.content.split(' ')[0];
+        const args = message.content.slice(cmdPrefix.length).trim();
+        let targetUser = message.author;
+        
+        if (args) {
+            const mentionMatch = args.match(/^<@!?(\d+)>$/);
+            const idMatch = args.match(/^(\d{17,19})$/);
+            const rawId = mentionMatch?.[1] || idMatch?.[1];
+            if (rawId) {
+                try {
+                    const member = await message.guild.members.fetch(rawId);
+                    targetUser = member.user;
+                } catch {
+                    return message.reply('Could not find that user.');
+                }
+            } else {
+                return message.reply('Please mention a valid user.');
+            }
+        }
+
+        const lastfmUser = await Stats.getLastFmUser(targetUser.id);
+        if (!lastfmUser) {
+            return message.reply(`${targetUser.username} has not linked their Last.fm account yet. Use \`=setlastfm <username>\`.`);
+        }
+
+        const loadingMsg = await message.reply('🎵 Analyzing listening history...');
+        try {
+            const score = await LastFm.getNicheScore(lastfmUser);
+            const progressBar = LastFm.generateProgressBar(score);
+            const embed = new EmbedBuilder()
+                .setTitle(`${targetUser.username}'s Niche Meter`)
+                .setDescription(`**Last.fm Username:** [${lastfmUser}](https://last.fm/user/${lastfmUser})\n\n${progressBar}`)
+                .setColor('#d51007')
+                .setThumbnail(targetUser.displayAvatarURL({ extension: 'png', size: 256 }));
+            await loadingMsg.edit({ content: null, embeds: [embed] });
+        } catch (err) {
+            await loadingMsg.edit(`Error: ${err.message}`);
+        }
+        return;
+    }
+
+    // ── =nichebattle ──────────────────────────────────────────────────────────
+    if (contentLower.startsWith('=nichebattle') || contentLower.startsWith('=nb ') || contentLower === '=nb') {
+        const mentions = Array.from(message.mentions.users.values());
+        if (mentions.length === 0) return message.reply('Please mention 1 or 2 users to battle!');
+        
+        let u1, u2;
+        if (mentions.length === 1) {
+            u1 = message.author;
+            u2 = mentions[0];
+        } else {
+            u1 = mentions[0];
+            u2 = mentions[1];
+        }
+
+        if (u1.id === u2.id) return message.reply("You can't battle yourself!");
+
+        const lfm1 = await Stats.getLastFmUser(u1.id);
+        const lfm2 = await Stats.getLastFmUser(u2.id);
+
+        if (!lfm1) return message.reply(`${u1.username} has not linked their Last.fm account yet. Please use \`=setlastfm <username>\` first.`);
+        if (!lfm2) return message.reply(`${u2.username} has not linked their Last.fm account yet. Please use \`=setlastfm <username>\` first.`);
+
+        const loadingMsg = await message.reply('⚔️ Analyzing both libraries and generating battle image...');
+        
+        try {
+            const [score1, score2] = await Promise.all([
+                LastFm.getNicheScore(lfm1),
+                LastFm.getNicheScore(lfm2)
+            ]);
+
+            const imageGen = new ImageGenerator();
+            const buffer = await imageGen.generateNicheBattleImage(
+                u1.displayAvatarURL({ extension: 'png', size: 256 }),
+                u2.displayAvatarURL({ extension: 'png', size: 256 })
+            );
+
+            const attachment = new AttachmentBuilder(buffer, { name: 'nichebattle.png' });
+            
+            let winnerText = '';
+            if (score1 > score2) winnerText = `🏆 **${u1.username}** is more niche!`;
+            else if (score2 > score1) winnerText = `🏆 **${u2.username}** is more niche!`;
+            else winnerText = "🤝 It's a tie!";
+
+            const embed = new EmbedBuilder()
+                .setTitle(`Niche Battle: ${u1.username} vs ${u2.username}`)
+                .setColor('#d51007')
+                .setImage('attachment://nichebattle.png')
+                .addFields(
+                    { name: u1.username, value: LastFm.generateProgressBar(score1), inline: false },
+                    { name: u2.username, value: LastFm.generateProgressBar(score2), inline: false }
+                )
+                .setDescription(winnerText);
+
+            await loadingMsg.edit({ content: null, embeds: [embed], files: [attachment] });
+        } catch (err) {
+            await loadingMsg.edit(`Error: ${err.message}`);
+        }
+        return;
     }
 
     // ── =resetdb ──────────────────────────────────────────────────────────────

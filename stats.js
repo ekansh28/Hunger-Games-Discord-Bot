@@ -49,6 +49,9 @@ async function initDB() {
             CREATE INDEX IF NOT EXISTS idx_word_stats_word_count 
             ON word_stats(word, total_count DESC);
         `);
+        await pool.query(`
+            ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS lastfm_user VARCHAR(64);
+        `);
         dbInitialized = true;
         console.log('[Stats] Neon PostgreSQL initialized.');
     } catch (err) {
@@ -97,7 +100,43 @@ function getPendingWord(guildId, userId, word) {
     return pendingWordStats.get(key);
 }
 
-// ── Batch Saving ─────────────────────────────────────────────
+// ── Last.fm Users ──────────────────────────────────────────────
+
+async function setLastFmUser(userId, username) {
+    if (!process.env.DATABASE_URL || !dbInitialized) return;
+    const client = await pool.connect();
+    try {
+        await client.query(`
+            INSERT INTO user_stats (guild_id, user_id, lastfm_user)
+            VALUES ('GLOBAL', $1, $2)
+            ON CONFLICT (guild_id, user_id) DO UPDATE SET lastfm_user = EXCLUDED.lastfm_user;
+        `, [userId, username]);
+    } catch (err) {
+        console.error('[Stats] Error setting lastfm user:', err);
+    } finally {
+        client.release();
+    }
+}
+
+async function getLastFmUser(userId) {
+    if (!process.env.DATABASE_URL || !dbInitialized) return null;
+    const client = await pool.connect();
+    try {
+        const res = await client.query(`
+            SELECT lastfm_user FROM user_stats 
+            WHERE user_id = $1 AND lastfm_user IS NOT NULL 
+            LIMIT 1;
+        `, [userId]);
+        return res.rows[0]?.lastfm_user || null;
+    } catch (err) {
+        console.error('[Stats] Error getting lastfm user:', err);
+        return null;
+    } finally {
+        client.release();
+    }
+}
+
+// ── Background Sync ─────────────────────────────────────────────
 
 async function flushStats() {
     if (!process.env.DATABASE_URL || !dbInitialized) return;
@@ -367,6 +406,8 @@ module.exports = {
     getLeaderboard,
     trackMessage,
     resetDatabase,
+    setLastFmUser,
+    getLastFmUser,
     pool, // export for migration script
     flushStats
 };
