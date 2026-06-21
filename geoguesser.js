@@ -3,11 +3,26 @@ const https = require('https');
 const cities = require('./cities.json');
 const MAPILLARY_TOKEN = process.env.MAPILLARY_TOKEN;
 
+const countryAliases = {
+    'usa': 'united states',
+    'us': 'united states',
+    'america': 'united states',
+    'united states of america': 'united states',
+    'uk': 'united kingdom',
+    'england': 'united kingdom',
+    'great britain': 'united kingdom',
+    'britain': 'united kingdom',
+    'uae': 'united arab emirates',
+    'korea': 'south korea',
+    'czech republic': 'czechia',
+    'holland': 'netherlands'
+};
+
 const activeGames = new Set(); // Stores channel IDs
 
 function fetchMapillaryData(url) {
     return new Promise((resolve, reject) => {
-        https.get(url, { headers: { 'Authorization': 'OAuth ' + MAPILLARY_TOKEN } }, (res) => {
+        const req = https.get(url, { headers: { 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }, timeout: 5000 }, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
@@ -18,6 +33,11 @@ function fetchMapillaryData(url) {
                 }
             });
         }).on('error', reject);
+        
+        req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('Mapillary API Request Timeout'));
+        });
     });
 }
 
@@ -101,8 +121,13 @@ async function handleGeoGuesser(message) {
     collector.on('collect', (m) => {
         const guess = m.content.trim().toLowerCase();
         
-        // Exact match or contains match
-        if (guess === targetCountry || targetCountry === guess) {
+        let normalizedGuess = guess;
+        if (countryAliases[guess]) {
+            normalizedGuess = countryAliases[guess];
+        }
+
+        // Exact match
+        if (normalizedGuess === targetCountry) {
             collector.stop('winner');
             activeGames.delete(channelId);
             
