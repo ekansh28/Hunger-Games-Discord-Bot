@@ -57,15 +57,25 @@ const statsSlashCommand = new SlashCommandBuilder()
             .setRequired(false)
     );
 
+const leaderboardSlashCommand = new SlashCommandBuilder()
+    .setName('leaderboard')
+    .setDescription('View the leaderboard for a tracked word.')
+    .addStringOption(opt =>
+        opt.setName('word')
+            .setDescription('The word to check')
+            .setRequired(true)
+            .addChoices(...Stats.TRACKED_WORDS.map(w => ({ name: w, value: w })))
+    );
+
 client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     try {
         const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         await rest.put(
             Routes.applicationCommands(client.user.id),
-            { body: [...commandData, ...music.commandData, statsSlashCommand.toJSON()] }
+            { body: [...commandData, ...music.commandData, statsSlashCommand.toJSON(), leaderboardSlashCommand.toJSON()] }
         );
-        console.log('Registered /br, /brcancel, /stats, and music slash commands.');
+        console.log('Registered slash commands.');
     } catch (err) {
         console.error('Failed to register slash commands:', err);
     }
@@ -73,7 +83,7 @@ client.once('clientReady', async () => {
 
 function buildStatsEmbed(targetUser, targetMember, stats) {
     const displayName = targetMember?.displayName || targetUser.displayName || targetUser.username;
-    return new EmbedBuilder()
+    const embed = new EmbedBuilder()
         .setColor('#e94560')
         .setTitle(`📊 ${displayName}'s Stats`)
         .setThumbnail(targetUser.displayAvatarURL({ extension: 'png', size: 256 }))
@@ -81,9 +91,19 @@ function buildStatsEmbed(targetUser, targetMember, stats) {
             { name: 'Hunger Games Wins', value: stats.hgWins.toLocaleString(), inline: true },
             { name: 'Ban Roulette Wins', value: stats.brWins.toLocaleString(), inline: true },
             { name: 'People Infected', value: stats.infectionsSpread.toLocaleString(), inline: true },
-            { name: `Times said "${Stats.TRACKED_WORD}"`, value: stats.wordCount.toLocaleString(), inline: true },
         )
         .setTimestamp();
+
+    for (const word of Stats.TRACKED_WORDS) {
+        const wStat = stats.words[word] || { count: 0, rank: '?' };
+        embed.addFields({
+            name: `Word: "${word}"`,
+            value: `Count: **${wStat.count.toLocaleString()}**\nRank: **#${wStat.rank}**`,
+            inline: true
+        });
+    }
+
+    return embed;
 }
 
 client.on('messageCreate', async (message) => {
@@ -140,8 +160,37 @@ client.on('messageCreate', async (message) => {
             }
         }
 
-        const stats = Stats.getStats(message.guild?.id, targetUser.id);
+        const stats = await Stats.getStats(message.guild?.id, targetUser.id);
         return message.reply({ embeds: [buildStatsEmbed(targetUser, targetMember, stats)] });
+    }
+
+    // ── =leaderboard ──────────────────────────────────────────────────────────
+    if (message.content.startsWith('=leaderboard')) {
+        const args = message.content.slice(12).trim().toLowerCase();
+        const word = args || Stats.TRACKED_WORDS[0];
+        
+        if (!Stats.TRACKED_WORDS.includes(word)) {
+            return message.reply(`Word not tracked. Tracked words: ${Stats.TRACKED_WORDS.join(', ')}`);
+        }
+
+        const lb = await Stats.getLeaderboard(message.guild?.id, word, 10);
+        
+        const embed = new EmbedBuilder()
+            .setTitle(`Leaderboard: "${word}"`)
+            .setColor('#FFD700')
+            .setTimestamp();
+            
+        if (lb.length === 0) {
+            embed.setDescription('No stats recorded for this word yet.');
+        } else {
+            const desc = lb.map((entry, idx) => {
+                const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `**${idx + 1}.**`;
+                return `${medal} <@${entry.userId}> — **${entry.count.toLocaleString()}**`;
+            }).join('\n\n');
+            embed.setDescription(desc);
+        }
+        
+        return message.reply({ embeds: [embed] });
     }
 
     // ── =alabama ──────────────────────────────────────────────────────────────
@@ -265,10 +314,12 @@ client.on('messageCreate', async (message) => {
                     inline: false,
                 },
                 {
-                    name: '📊 Stats',
+                    name: '📊 Stats & Leaderboards',
                     value: [
                         '`=stats [@user]` -- View your (or another user\'s) stats',
                         '`/stats [user]` -- Same, via slash command',
+                        '`=leaderboard [word]` -- View the top users for a tracked word',
+                        '`/leaderboard [word]` -- Same, via slash command',
                     ].join('\n'),
                     inline: false,
                 },
@@ -464,8 +515,31 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isChatInputCommand() && interaction.commandName === 'stats') {
             const targetUser = interaction.options.getUser('user') || interaction.user;
             const targetMember = interaction.options.getMember('user') || interaction.member;
-            const stats = Stats.getStats(interaction.guild?.id, targetUser.id);
+            const stats = await Stats.getStats(interaction.guild?.id, targetUser.id);
             return interaction.reply({ embeds: [buildStatsEmbed(targetUser, targetMember, stats)] });
+        }
+
+        // ── /leaderboard slash command ────────────────────────────
+        if (interaction.isChatInputCommand() && interaction.commandName === 'leaderboard') {
+            const word = interaction.options.getString('word');
+            const lb = await Stats.getLeaderboard(interaction.guild?.id, word, 10);
+            
+            const embed = new EmbedBuilder()
+                .setTitle(`🏆 Leaderboard: "${word}"`)
+                .setColor('#FFD700')
+                .setTimestamp();
+                
+            if (lb.length === 0) {
+                embed.setDescription('No stats recorded for this word yet.');
+            } else {
+                const desc = lb.map((entry, idx) => {
+                    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `**${idx + 1}.**`;
+                    return `${medal} <@${entry.userId}> — **${entry.count.toLocaleString()}**`;
+                }).join('\n\n');
+                embed.setDescription(desc);
+            }
+            
+            return interaction.reply({ embeds: [embed] });
         }
 
         if (interaction.isChatInputCommand() && music.commandNames.has(interaction.commandName)) {
