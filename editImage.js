@@ -1,3 +1,8 @@
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const COMFY_URL = "https://47e1de4312911.notebooksn.jarvislabs.net";
 
 async function handleEditCommand(message) {
     const args = message.content.trim().split(/\s+/);
@@ -39,48 +44,91 @@ async function handleEditCommand(message) {
         // Indicate processing (non-blocking for speed)
         message.channel.sendTyping().catch(() => {});
 
-        // Provide GEMINI_API_KEY
-        if (!process.env.GEMINI_API_KEY) {
-            return message.channel.send(`<@${message.author.id}> ❌ GEMINI_API_KEY is missing in .env!`);
+        // 1. Download image from Discord
+        const imgRes = await fetch(imageUrl);
+        const imgBlob = await imgRes.blob();
+        
+        // 2. Upload to ComfyUI Server
+        const formData = new FormData();
+        const uploadFilename = `discord_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.png`;
+        formData.append("image", imgBlob, uploadFilename);
+        
+        const uploadRes = await fetch(`${COMFY_URL}/upload/image`, {
+            method: "POST",
+            body: formData
+        });
+        const uploadData = await uploadRes.json();
+        
+        if (!uploadData.name) {
+            throw new Error("Failed to upload image to ComfyUI");
         }
 
-        const { GoogleGenAI } = require("@google/genai");
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        // 3. Load workflow and apply conditional logic
+        const workflowPath = path.join(__dirname, 'ekansh.json');
+        const workflowRaw = fs.readFileSync(workflowPath, 'utf8');
+        const workflow = JSON.parse(workflowRaw);
         
-        // Ask Gemini to analyze the image and the edit instruction
-        const responseFetch = await fetch(imageUrl);
-        const blob = await responseFetch.blob();
-        const arrayBuffer = await blob.arrayBuffer();
-        const base64Image = Buffer.from(arrayBuffer).toString("base64");
+        // Inject the user's prompt into the text node
+        workflow["6"].inputs.text = prompt;
+        // Keep denoise at a constant 0.65 for all edits
+        workflow["3"].inputs.denoise = 0.65;
         
-        const geminiPrompt = `Analyze the attached image and apply the user's edit instruction: "${prompt}". Write a highly detailed image generation prompt describing what the final edited image should look like. Only return the prompt text, nothing else.`;
+        // Set the uploaded image filename
+        workflow["10"].inputs.image = uploadData.name;
         
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: [
-                {
-                    role: "user",
-                    parts: [
-                        { inlineData: { data: base64Image, mimeType: "image/png" } },
-                        { text: geminiPrompt }
-                    ]
-                }
-            ]
+        // Randomize seed to avoid identical results
+        workflow["3"].inputs.seed = Math.floor(Math.random() * 1000000000);
+
+        // 4. Submit workflow to ComfyUI
+        const promptRes = await fetch(`${COMFY_URL}/prompt`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: workflow })
         });
+        const promptData = await promptRes.json();
+        const promptId = promptData.prompt_id;
         
-        const finalPrompt = response.text.trim();
-        const encodedPrompt = encodeURIComponent(finalPrompt);
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true`;
+        if (!promptId) {
+            throw new Error("Failed to queue ComfyUI workflow");
+        }
+
+        // 5. Poll history for completion
+        let outputImageName = null;
+        for (let i = 0; i < 60; i++) { // Poll for up to 60 seconds
+            await new Promise(r => setTimeout(r, 1000));
+            const historyRes = await fetch(`${COMFY_URL}/history/${promptId}`);
+            const historyData = await historyRes.json();
+            
+            if (historyData[promptId]) {
+                const outputs = historyData[promptId].outputs;
+                // Node 9 is the SaveImage node based on ekansh.json
+                if (outputs && outputs["9"] && outputs["9"].images && outputs["9"].images.length > 0) {
+                    outputImageName = outputs["9"].images[0].filename;
+                    break;
+                }
+            }
+        }
         
+        if (!outputImageName) {
+            throw new Error("ComfyUI generation timed out or failed");
+        }
+
+        // 6. Fetch resulting image
+        const finalImgRes = await fetch(`${COMFY_URL}/view?filename=${outputImageName}&type=output`);
+        const finalImgBuffer = await finalImgRes.arrayBuffer();
+
         await message.channel.send({
             content: `<@${message.author.id}> 🎨 **Edited Image:**\n> *${prompt}*`,
-            files: [pollinationsUrl]
+            files: [{
+                attachment: Buffer.from(finalImgBuffer),
+                name: 'edited_image.png'
+            }]
         });
 
     } catch (err) {
-        console.error('[GeminiEdit] Error editing image:', err);
+        console.error('[ComfyUIEdit] Error editing image:', err);
         const errMsg = err.message || (err.title ? err.title : JSON.stringify(err));
-        return message.channel.send(`<@${message.author.id}> ❌ Failed to edit the image. Error: ${errMsg}`);
+        return message.channel.send(`<@${message.author.id}> ❌ Failed to edit the image via ComfyUI. Error: ${errMsg}`);
     }
 }
 
