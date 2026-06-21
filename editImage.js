@@ -6,7 +6,7 @@ const COMFY_URL = "https://47e1de4312911.notebooksn.jarvislabs.net";
 
 async function handleEditCommand(message) {
     const args = message.content.trim().split(/\s+/);
-    const prompt = args.slice(1).join(' ');
+    let prompt = args.slice(1).join(' ');
 
     if (!prompt) {
         return message.channel.send(`<@${message.author.id}> You need to provide a prompt! Usage: reply to an image with \`=edit <prompt>\``);
@@ -20,6 +20,14 @@ async function handleEditCommand(message) {
         let repliedMessage = message.channel.messages.cache.get(message.reference.messageId);
         if (!repliedMessage) {
             repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
+        }
+
+        if (repliedMessage.author.id === message.client.user.id) {
+            const match = repliedMessage.content.match(/> \*(.*?)\*/);
+            if (match && match[1]) {
+                const previousPrompt = match[1].trim();
+                prompt = `previously: ${previousPrompt}, now: ${prompt}`;
+            }
         }
 
         let imageUrl = null;
