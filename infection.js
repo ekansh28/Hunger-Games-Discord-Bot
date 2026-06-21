@@ -740,7 +740,7 @@ async function handleVirusCommand(message) {
     const guild = message.guild;
 
     if (!cmd) {
-        return message.reply('Usage: `=virus create <Name> <Color>` or `=virus top` or `=virus rename/color/icon`');
+        return message.channel.send(`<@${message.author.id}> Usage: `=virus create <Name> <Color>` or `=virus top` or `=virus rename/color/icon``);
     }
 
     if (cmd === 'create') {
@@ -749,33 +749,33 @@ async function handleVirusCommand(message) {
         const colorInput = resolveVirusColor(rawColor);
 
         if (!name || !colorInput) {
-            return message.reply('Usage: `=virus create <Name> <Color>`\nExample: `=virus create T-Virus red` or `=virus create T-Virus #ff0000`');
+            return message.channel.send(`<@${message.author.id}> Usage: `=virus create <Name> <Color>`\nExample: `=virus create T-Virus red` or `=virus create T-Virus #ff0000``);
         }
 
         const forbiddenType = isForbiddenName(name);
         if (forbiddenType === 'mod') {
-            return message.reply('❌ You cannot use moderation, staff, or system names for your virus.');
+            return message.channel.send(`<@${message.author.id}> ❌ You cannot use moderation, staff, or system names for your virus.`);
         } else if (forbiddenType === 'slur') {
-            return message.reply('❌ You cannot use racial or homophobic slurs for your virus.');
+            return message.channel.send(`<@${message.author.id}> ❌ You cannot use racial or homophobic slurs for your virus.`);
         }
 
         if (isInfected(guild.id, message.author.id)) {
-            return message.reply('You are already infected with a virus! You must be cured before creating a new one.');
+            return message.channel.send(`<@${message.author.id}> You are already infected with a virus! You must be cured before creating a new one.`);
         }
 
         const bot = guild.members.me;
         if (!bot.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-            return message.reply('I need the Manage Roles permission to create a virus.');
+            return message.channel.send(`<@${message.author.id}> I need the Manage Roles permission to create a virus.`);
         }
 
         const mainRole = guild.roles.cache.get(AIDS_ROLE_ID);
         if (!mainRole) {
-            return message.reply('The main Infection host role was not found.');
+            return message.channel.send(`<@${message.author.id}> The main Infection host role was not found.`);
         }
 
         // Check Discord role limit (250)
         if (guild.roles.cache.size >= 250) {
-            return message.reply('**Error:** The server has reached the maximum limit of 250 Discord roles. The role limit has been exceeded. Old viruses must be eradicated before creating new ones.');
+            return message.channel.send(`<@${message.author.id}> **Error:** The server has reached the maximum limit of 250 Discord roles. The role limit has been exceeded. Old viruses must be eradicated before creating new ones.`);
         }
 
         try {
@@ -810,7 +810,7 @@ async function handleVirusCommand(message) {
     }
 
     if (cmd === 'top') {
-        if (!viruses[guild.id]) return message.reply('There are no active custom viruses in this server.');
+        if (!viruses[guild.id]) return message.channel.send(`<@${message.author.id}> There are no active custom viruses in this server.`);
 
         // Count infections per virus
         const counts = {};
@@ -824,7 +824,7 @@ async function handleVirusCommand(message) {
         }
 
         const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-        if (sorted.length === 0) return message.reply('There are no active infections for custom viruses.');
+        if (sorted.length === 0) return message.channel.send(`<@${message.author.id}> There are no active infections for custom viruses.`);
 
         let desc = '';
         for (let i = 0; i < sorted.length; i++) {
@@ -845,18 +845,18 @@ async function handleVirusCommand(message) {
     const myVirusId = Object.keys(viruses[guild.id] || {}).find(vid => viruses[guild.id][vid].ownerId === message.author.id);
 
     if (cmd === 'rename') {
-        if (!myVirusId) return message.reply('You do not own any viruses. Create one first with `=virus create`!');
+        if (!myVirusId) return message.channel.send(`<@${message.author.id}> You do not own any viruses. Create one first with `=virus create`!`);
         const myRole = guild.roles.cache.get(myVirusId);
-        if (!myRole) return message.reply('Your virus role is missing.');
+        if (!myRole) return message.channel.send(`<@${message.author.id}> Your virus role is missing.`);
 
         const newName = args.slice(2).join(' ');
-        if (!newName) return message.reply('Usage: `=virus rename <NewName>`');
+        if (!newName) return message.channel.send(`<@${message.author.id}> Usage: `=virus rename <NewName>``);
 
         const forbiddenType = isForbiddenName(newName);
         if (forbiddenType === 'mod') {
-            return message.reply('❌ You cannot use moderation, staff, or system names for your virus.');
+            return message.channel.send(`<@${message.author.id}> ❌ You cannot use moderation, staff, or system names for your virus.`);
         } else if (forbiddenType === 'slur') {
-            return message.reply('❌ You cannot use racial or homophobic slurs for your virus.');
+            return message.channel.send(`<@${message.author.id}> ❌ You cannot use racial or homophobic slurs for your virus.`);
         }
 
         try {
@@ -872,14 +872,14 @@ async function handleVirusCommand(message) {
     }
 
     if (cmd === 'color') {
-        if (!myVirusId) return message.reply('You do not own any viruses. Create one first with `=virus create`!');
+        if (!myVirusId) return message.channel.send(`<@${message.author.id}> You do not own any viruses. Create one first with `=virus create`!`);
         const myRole = guild.roles.cache.get(myVirusId);
-        if (!myRole) return message.reply('Your virus role is missing.');
+        if (!myRole) return message.channel.send(`<@${message.author.id}> Your virus role is missing.`);
 
         const rawColor = args[2];
         const newColor = resolveVirusColor(rawColor);
         if (!newColor) {
-            return message.reply('Usage: `=virus color <Color>`\nExample: `=virus color blue` or `=virus color #0000ff`');
+            return message.channel.send(`<@${message.author.id}> Usage: `=virus color <Color>`\nExample: `=virus color blue` or `=virus color #0000ff``);
         }
 
         try {
@@ -895,9 +895,9 @@ async function handleVirusCommand(message) {
     }
 
     if (cmd === 'icon') {
-        if (!myVirusId) return message.reply('You do not own any viruses. Create one first with `=virus create`!');
+        if (!myVirusId) return message.channel.send(`<@${message.author.id}> You do not own any viruses. Create one first with `=virus create`!`);
         const myRole = guild.roles.cache.get(myVirusId);
-        if (!myRole) return message.reply('Your virus role is missing.');
+        if (!myRole) return message.channel.send(`<@${message.author.id}> Your virus role is missing.`);
 
         try {
             // Check if they attached an image
@@ -909,7 +909,7 @@ async function handleVirusCommand(message) {
                 // Try to set it as a unicode emoji
                 const emoji = args[2];
                 if (!emoji) {
-                    return message.reply('Usage: `=virus icon <Emoji>` OR attach an image file with the command `=virus icon`.');
+                    return message.channel.send(`<@${message.author.id}> Usage: `=virus icon <Emoji>` OR attach an image file with the command `=virus icon`.`);
                 }
                 await myRole.edit({ unicodeEmoji: emoji }, `Virus icon changed by ${message.author.username}`);
                 return message.channel.send(`<@${message.author.id}> Your virus icon has been updated to ${emoji}!`);

@@ -3,7 +3,7 @@ const API_URL = 'http://ws.audioscrobbler.com/2.0/';
 async function fetchUserTopArtists(username, limit = 10) {
     const key = process.env.LASTFM_API_KEY;
     if (!key) throw new Error('LASTFM_API_KEY is not configured in .env');
-    const url = `${API_URL}?method=user.gettopartists&user=${encodeURIComponent(username)}&api_key=${key}&format=json&limit=${limit}&period=overall`;
+    const url = `${API_URL}?method=user.gettopartists&user=${encodeURIComponent(username)}&api_key=${key}&format=json&limit=${limit}&period=6month`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Last.fm API returned ${res.status}`);
     const data = await res.json();
