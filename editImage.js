@@ -44,9 +44,16 @@ async function handleEditCommand(message) {
         // Indicate processing (non-blocking for speed)
         message.channel.sendTyping().catch(() => {});
 
-        // 1. Download image from Discord
-        const imgRes = await fetch(imageUrl);
-        const imgBlob = await imgRes.blob();
+        // 1. Download image from Discord and force conversion to a flat PNG
+        // This ensures GIFs are converted to their first static frame
+        const { createCanvas, loadImage } = require('canvas');
+        const img = await loadImage(imageUrl);
+        const canvas = createCanvas(img.width, img.height);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        
+        const pngBuffer = canvas.toBuffer('image/png');
+        const imgBlob = new Blob([pngBuffer], { type: 'image/png' });
         
         // 2. Upload to ComfyUI Server
         const formData = new FormData();
@@ -63,21 +70,19 @@ async function handleEditCommand(message) {
             throw new Error("Failed to upload image to ComfyUI");
         }
 
-        // 3. Load workflow and apply conditional logic
-        const workflowPath = path.join(__dirname, 'ekansh.json');
+        // 3. Load workflow
+        const workflowPath = path.join(__dirname, 'workflow_api.json');
         const workflowRaw = fs.readFileSync(workflowPath, 'utf8');
         const workflow = JSON.parse(workflowRaw);
         
-        // Inject the user's prompt into the text node
-        workflow["6"].inputs.text = prompt;
-        // Keep denoise at a constant 0.65 for all edits
-        workflow["3"].inputs.denoise = 0.65;
+        // Inject the user's prompt into the positive text node (TextEncodeQwenImageEditPlus)
+        workflow["24:19"].inputs.prompt = prompt;
         
         // Set the uploaded image filename
         workflow["10"].inputs.image = uploadData.name;
         
         // Randomize seed to avoid identical results
-        workflow["3"].inputs.seed = Math.floor(Math.random() * 1000000000);
+        workflow["24:21"].inputs.seed = Math.floor(Math.random() * 1000000000);
 
         // 4. Submit workflow to ComfyUI
         const promptRes = await fetch(`${COMFY_URL}/prompt`, {
@@ -94,18 +99,23 @@ async function handleEditCommand(message) {
 
         // 5. Poll history for completion
         let outputImageName = null;
-        for (let i = 0; i < 60; i++) { // Poll for up to 60 seconds
+        for (let i = 0; i < 120; i++) { // Poll for up to 120 seconds to be absolutely safe
             await new Promise(r => setTimeout(r, 1000));
             const historyRes = await fetch(`${COMFY_URL}/history/${promptId}`);
             const historyData = await historyRes.json();
             
             if (historyData[promptId]) {
                 const outputs = historyData[promptId].outputs;
-                // Node 9 is the SaveImage node based on ekansh.json
-                if (outputs && outputs["9"] && outputs["9"].images && outputs["9"].images.length > 0) {
-                    outputImageName = outputs["9"].images[0].filename;
-                    break;
+                // Dynamically scan for ANY node that produced an image output
+                if (outputs) {
+                    for (const nodeId in outputs) {
+                        if (outputs[nodeId].images && outputs[nodeId].images.length > 0) {
+                            outputImageName = outputs[nodeId].images[0].filename;
+                            break;
+                        }
+                    }
                 }
+                if (outputImageName) break;
             }
         }
         
