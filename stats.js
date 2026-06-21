@@ -12,7 +12,7 @@ neonConfig.webSocketConstructor = ws;
 
 // ── Configurable tracked words ───────────────────────────────
 // We support an array of words to track. (Case-insensitive)
-const TRACKED_WORDS = ['nigga', 'donut', 'pizza'];
+const TRACKED_WORDS = ['nigga', 'fag', 'penis'];
 
 // ── Database Setup ───────────────────────────────────────────
 const pool = new Pool({
@@ -289,10 +289,10 @@ async function getLeaderboard(guildId, word, limit = 10) {
 // Returns an array of tracked words found and processed.
 function trackMessage(guildId, userId, messageContent) {
     if (!guildId || !userId || !messageContent) return [];
-    
+
     // Quality check: < 10 chars
     if (messageContent.length < 10) return [];
-    
+
     // Quality check: < 3 words
     const tokens = messageContent.trim().split(/\s+/);
     if (tokens.length < 3) return [];
@@ -310,7 +310,7 @@ function trackMessage(guildId, userId, messageContent) {
 
     // Check for our tracked words
     const lowerContent = messageContent.toLowerCase();
-    
+
     // Find unique words to avoid counting "donut donut" as +2
     const foundWords = new Set();
     for (const word of TRACKED_WORDS) {
@@ -325,7 +325,7 @@ function trackMessage(guildId, userId, messageContent) {
     for (const word of foundWords) {
         const cdKey = `${userId}:${word}`;
         const lastUsed = userWordCooldowns.get(cdKey) || 0;
-        
+
         // Cooldown check
         if (now - lastUsed >= COOLDOWN_MS) {
             addWordCount(guildId, userId, word, 1);
