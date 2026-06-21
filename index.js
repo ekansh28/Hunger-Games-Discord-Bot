@@ -3,7 +3,7 @@ const fs = require('fs');
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, PermissionsBitField, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const EventLogic = require('./utils/eventLogic');
 const ImageGenerator = require('./utils/imageGenerator');
-const { commandData, handleInteraction: handleBrInteraction } = require('./banRoulette');
+const { commandData, handleInteraction: handleBrInteraction, handleBrPrefixCommand } = require('./banRoulette');
 const setupMusic = require('./music');
 const { authorizedUsers, authorizedRoles, isAuthorized } = require('./authorization');
 const Infection = require('./infection');
@@ -276,6 +276,12 @@ client.on('messageCreate', async (message) => {
         } catch (err) {
             await loadingMsg.edit(`Error: ${err.message}`);
         }
+        return;
+    }
+
+    // ── =br ───────────────────────────────────────────────────────────────────
+    if (contentLower.startsWith('=br')) {
+        await handleBrPrefixCommand(message);
         return;
     }
 

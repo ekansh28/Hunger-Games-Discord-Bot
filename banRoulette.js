@@ -432,7 +432,7 @@ async function openSession(channelId, hostUser, chamberSize, replyFn, guild) {
     const attachment = new AttachmentBuilder(buf, { name: 'roulette.png' });
     const row = buildLobbyRow(session);
 
-    const msg = await replyFn({ content: `🎰 **Ban Roulette** hosted by **${hostUser.displayName || hostUser.username}**\n1-in-${chamberSize} chance each pull. Press **Join Game**, then the host presses **Start Game**.`, embeds: [], components: [row], files: [attachment] });
+    const msg = await replyFn({ content: '', embeds: [], components: [row], files: [attachment] });
 
     // replyFn may return the Message directly or we need to fetch it
     session.message = msg?.resource?.message ?? msg;
@@ -474,23 +474,46 @@ async function handleBrCommand(interaction) {
 
 // ── =br prefix command (called from index.js) ─────────────────
 async function handleBrPrefixCommand(message) {
-    if (message.author.id !== BR_ADMIN_ID && !isAuthorized(message.member || message.author)) {
-        return message.reply('Only authorized users can host Ban Roulette.');
-    }
     const args = message.content.slice(3).trim();
     const chamberSize = parseInt(args, 10) || 6;
     const safeSize = Math.max(2, Math.min(20, chamberSize));
 
-    await openSession(
-        message.channel.id,
-        message.author,
-        safeSize,
-        async (payload) => {
-            if (typeof payload === 'string') return message.reply(payload);
-            return message.channel.send(payload);
-        },
-        message.guild,
-    );
+    const executeBr = async () => {
+        await openSession(
+            message.channel.id,
+            message.author,
+            safeSize,
+            async (payload) => {
+                if (typeof payload === 'string') return message.channel.send(payload);
+                return message.channel.send(payload);
+            },
+            message.guild,
+        );
+    };
+
+    if (message.author.id !== BR_ADMIN_ID && !isAuthorized(message.member || message.author)) {
+        await message.react('✅');
+        const filter = (reaction) => reaction.emoji.name === '✅';
+        const collector = message.createReactionCollector({ filter, time: 300000 });
+
+        collector.on('collect', async (reaction) => {
+            if (reaction.count >= 2) {
+                collector.stop('passed');
+                if (sessions.has(message.channel.id)) {
+                    await message.channel.send('A Ban Roulette session is already active in this channel.');
+                } else {
+                    await executeBr();
+                }
+            }
+        });
+        return;
+    }
+
+    if (sessions.has(message.channel.id)) {
+        return message.reply('A Ban Roulette session is already active in this channel.');
+    }
+
+    await executeBr();
 }
 
 // ── /brcancel ─────────────────────────────────────────────────
@@ -546,7 +569,7 @@ async function handleJoin(interaction) {
             session.autoCloseTimeout = null;
         }
 
-        await refreshMessage(session, `🎰 **Ban Roulette** hosted by <@${session.hostId}> — 1-in-${session.chamberSize} per pull\n**${session.players.length}** player${session.players.length !== 1 ? 's' : ''} joined. Press **Start Game** when ready.`);
+        await refreshMessage(session, '');
     } finally {
         joiningUsers.delete(userId);
     }
