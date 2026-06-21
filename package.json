@@ -23,6 +23,8 @@
     "@distube/spotify": "^2.0.1",
     "@distube/youtube": "^1.0.1",
     "@distube/yt-dlp": "^2.0.1",
+    "@google/genai": "^2.9.0",
+    "@google/generative-ai": "^0.24.1",
     "@gradio/client": "^2.3.0",
     "@neondatabase/serverless": "^0.9.4",
     "canvas": "^3.2.3",

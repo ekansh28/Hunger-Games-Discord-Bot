@@ -1,4 +1,3 @@
-const { Client } = require("@gradio/client");
 
 async function handleEditCommand(message) {
     const args = message.content.trim().split(/\s+/);
@@ -13,7 +12,11 @@ async function handleEditCommand(message) {
     }
 
     try {
-        const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
+        let repliedMessage = message.channel.messages.cache.get(message.reference.messageId);
+        if (!repliedMessage) {
+            repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
+        }
+
         let imageUrl = null;
 
         // Check for attachments
@@ -33,38 +36,69 @@ async function handleEditCommand(message) {
             return message.channel.send(`<@${message.author.id}> The message you replied to does not contain a valid image.`);
         }
 
-        // Indicate processing
-        await message.channel.sendTyping();
+        // Indicate processing (non-blocking for speed)
+        message.channel.sendTyping().catch(() => {});
 
-        // Fetch image to a Blob as required by Gradio
-        const response = await fetch(imageUrl);
-        const imageBlob = await response.blob();
+        // Provide OPENROUTER_API_KEY
+        if (!process.env.OPENROUTER_API_KEY) {
+            return message.channel.send(`<@${message.author.id}> ❌ OPENROUTER_API_KEY is missing in .env!`);
+        }
 
-        // Provide HF_TOKEN to bypass ZeroGPU quota limits if set in .env
-        const clientOptions = process.env.HF_TOKEN ? { hf_token: process.env.HF_TOKEN } : {};
-        const client = await Client.connect("timbrooks/instruct-pix2pix", clientOptions);
-        const result = await client.predict("/generate", {
-            input_image: imageBlob,
-            instruction: prompt,
-            steps: 50,
-            randomize_seed: "Randomize Seed",
-            seed: Math.floor(Math.random() * 1000000), // Randomize seed manually
-            randomize_cfg: "Fix CFG",
-            text_cfg_scale: 7.5,
-            image_cfg_scale: 1.5,
+        const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: "x-ai/grok-imagine-image-quality",
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            {
+                                type: "image_url",
+                                image_url: { url: imageUrl }
+                            },
+                            {
+                                type: "text",
+                                text: prompt
+                            }
+                        ]
+                    }
+                ],
+                modalities: ["image"]
+            })
         });
 
-        // The edited image is element [3] in the returned list
-        const outImage = result.data[3];
-        const finalUrl = outImage.url ? outImage.url : outImage;
+        const result = await openRouterResponse.json();
+
+        if (result.error) {
+            throw new Error(result.error.message || JSON.stringify(result.error));
+        }
+
+        const messageData = result.choices[0].message;
+        
+        let finalUrl = null;
+        if (messageData.images && messageData.images.length > 0) {
+            finalUrl = messageData.images[0].image_url.url;
+        } else if (messageData.content) {
+            // Sometimes it returns a markdown image link
+            const match = messageData.content.match(/!\[.*?\]\((.*?)\)/);
+            finalUrl = match ? match[1] : messageData.content;
+        }
+
+        if (!finalUrl) {
+            throw new Error("No image returned from OpenRouter API.");
+        }
 
         await message.channel.send({
-            content: `<@${message.author.id}>  **Edited Image:**\n> *${prompt}*`,
+            content: `<@${message.author.id}> 🎨 **Edited Image:**\n> *${prompt}*`,
             files: [finalUrl]
         });
 
     } catch (err) {
-        console.error('[GradioEdit] Error editing image:', err);
+        console.error('[OpenRouter] Error editing image:', err);
         const errMsg = err.message || (err.title ? err.title : JSON.stringify(err));
         return message.channel.send(`<@${message.author.id}> ❌ Failed to edit the image. Error: ${errMsg}`);
     }
