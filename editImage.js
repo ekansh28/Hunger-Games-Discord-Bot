@@ -87,7 +87,7 @@ async function handleEditCommand(message) {
         }
 
         // 3. Load workflow
-        const workflowPath = path.join(__dirname, 'workflow_api.json');
+        const workflowPath = path.join(__dirname, 'workflow_api2.json');
         const workflowRaw = fs.readFileSync(workflowPath, 'utf8');
         const workflow = JSON.parse(workflowRaw);
         
