@@ -3,7 +3,7 @@ const API_URL = 'http://ws.audioscrobbler.com/2.0/';
 async function fetchUserTopArtists(username, limit = 10) {
     const key = process.env.LASTFM_API_KEY;
     if (!key) throw new Error('LASTFM_API_KEY is not configured in .env');
-    const url = `${API_URL}?method=user.gettopartists&user=${encodeURIComponent(username)}&api_key=${key}&format=json&limit=${limit}&period=1month`;
+    const url = `${API_URL}?method=user.gettopartists&user=${encodeURIComponent(username)}&api_key=${key}&format=json&limit=${limit}&period=overall`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Last.fm API returned ${res.status}`);
     const data = await res.json();
@@ -36,7 +36,7 @@ function calculateArtistScore(listenersStr) {
 async function getNicheScore(username) {
     const artists = await fetchUserTopArtists(username, 10);
     if (!artists || artists.length === 0) {
-        throw new Error('User has no top artists for the past month. Go listen to some music!');
+        throw new Error('User has no top artists. Go listen to some music!');
     }
     
     let totalScore = 0;

@@ -310,9 +310,9 @@ class ImageGenerator {
         return canvas.toBuffer('image/png');
     }
 
-    async generateNicheBattleImage(avatarUrl1, avatarUrl2) {
+    async generateNicheBattleImage(avatarUrl1, avatarUrl2, winnerIndex = 0) {
         const width = 600;
-        const height = 300;
+        const height = 350;
         const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
 
@@ -325,11 +325,11 @@ class ImageGenerator {
         ctx.font = `bold 60px "${FONT_FAMILY}"`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('VS', width / 2, height / 2);
+        ctx.fillText('VS', width / 2, height / 2 + 20);
 
         // Avatars
         const avatarSize = 200;
-        const yPos = (height - avatarSize) / 2;
+        const yPos = (height - avatarSize) / 2 + 20;
         const xPos1 = 50;
         const xPos2 = width - avatarSize - 50;
 
@@ -356,6 +356,41 @@ class ImageGenerator {
             ctx.clip();
             ctx.drawImage(avatar2, xPos2, yPos, avatarSize, avatarSize);
             ctx.restore();
+
+            // Draw Crown for winner
+            const drawCrown = (x, y) => {
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.fillStyle = '#FFD700'; // Gold
+                ctx.strokeStyle = '#DAA520'; // Darker gold
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(-35, 20); // bottom left
+                ctx.lineTo(35, 20);  // bottom right
+                ctx.lineTo(45, -20); // right tip
+                ctx.lineTo(15, -5);  // inner right
+                ctx.lineTo(0, -35);  // middle tip
+                ctx.lineTo(-15, -5); // inner left
+                ctx.lineTo(-45, -20); // left tip
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                
+                // Jewels
+                ctx.fillStyle = '#FF0000';
+                ctx.beginPath(); ctx.arc(0, -5, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#00FF00';
+                ctx.beginPath(); ctx.arc(-22, 5, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#0000FF';
+                ctx.beginPath(); ctx.arc(22, 5, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            };
+
+            if (winnerIndex === 1) {
+                drawCrown(xPos1 + avatarSize / 2, yPos - 20);
+            } else if (winnerIndex === 2) {
+                drawCrown(xPos2 + avatarSize / 2, yPos - 20);
+            }
 
         } catch (err) {
             console.error('[ImageGenerator] Error loading avatars for niche battle:', err);

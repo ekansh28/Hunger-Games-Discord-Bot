@@ -152,7 +152,13 @@ async function removeInfection(member) {
     const record = data[guildId][userId];
 
     try {
-        await member.setNickname(record.originalNickname ?? null, 'Cured from AIDS');
+        let cleanNick = record.originalNickname || member.displayName;
+        while (cleanNick && cleanNick.includes(SUFFIX)) {
+            cleanNick = cleanNick.replace(SUFFIX, '').trim();
+        }
+        if (cleanNick === '') cleanNick = null;
+        
+        await member.setNickname(cleanNick, 'Cured from AIDS');
     } catch (err) {
         console.error(`[AIDS] restore nickname failed for ${userId}:`, err?.message || err);
     }
@@ -606,9 +612,17 @@ async function handleMessage(message) {
     if (message.author.bot || !message.guild) return;
 
     // ── .bump — no longer grants immunity (role-based instead) ──
-    // We still silently ignore the .bump command so it doesn't
-    // accidentally trigger other handlers.
+    // However, it cures the person if they have the bump immune role
     if (message.content.trim().toLowerCase() === '.bump') {
+        const bumpImmuneRole = message.guild.roles.cache.get(BUMP_IMMUNE_ROLE_ID);
+        if (bumpImmuneRole && message.member.roles.cache.has(BUMP_IMMUNE_ROLE_ID)) {
+            // Check if they have the AIDS role, if yes, cure them
+            if (message.member.roles.cache.has(AIDS_ROLE_ID)) {
+                await removeInfection(message.member);
+                // Also ensure we reply letting them know they've been cured?
+                // Requirements just said "the person will have (HAS AIDS) and the role removed"
+            }
+        }
         return;
     }
 
@@ -668,13 +682,44 @@ async function handleMessage(message) {
                 await message.channel.send('You are not authorized to cure all subjects.');
                 return;
             }
-            const ids = getInfectedIds(message.guild.id);
+            
             let cured = 0;
+            const role = message.guild.roles.cache.get(AIDS_ROLE_ID);
+            
+            // Fallback to JSON ids if the role doesn't exist
+            const ids = getInfectedIds(message.guild.id);
             for (const id of ids) {
-                const m = message.guild.members.cache.get(id);
-                if (m && await removeInfection(m)) cured++;
-                else if (!m) markCured(message.guild.id, id);
+                markCured(message.guild.id, id);
             }
+            
+            if (role) {
+                const membersWithRole = role.members.values();
+                for (const member of membersWithRole) {
+                    await member.roles.remove(role, 'Cured of AIDS (=cure all)');
+                    
+                    let currentNick = member.displayName;
+                    let nickChanged = false;
+                    while (currentNick && currentNick.includes(SUFFIX)) {
+                        currentNick = currentNick.replace(SUFFIX, '').trim();
+                        nickChanged = true;
+                    }
+            
+                    if (nickChanged) {
+                        try {
+                            const cleanNick = currentNick.length > 0 ? currentNick : 'CuredUser';
+                            await member.setNickname(cleanNick, 'Cured of AIDS');
+                        } catch (err) {}
+                    }
+                    cured++;
+                }
+            } else {
+                // If role missing, we just cure anyone who is in the JSON
+                for (const id of ids) {
+                    const m = message.guild.members.cache.get(id);
+                    if (m && await removeInfection(m)) cured++;
+                }
+            }
+            
             await message.channel.send(`${cured} subject(s) have been cured.`);
             return;
         }

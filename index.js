@@ -36,6 +36,29 @@ function findAliveParticipantId(gameState) {
     return null;
 }
 
+async function resolveUser(guild, arg) {
+    if (!arg) return null;
+    const mentionMatch = arg.match(/^<@!?(\d+)>$/);
+    const idMatch = arg.match(/^(\d{17,19})$/);
+    const rawId = mentionMatch?.[1] || idMatch?.[1];
+
+    if (rawId) {
+        try {
+            const member = await guild.members.fetch(rawId);
+            return member.user;
+        } catch {
+            return null;
+        }
+    }
+    
+    try {
+        const members = await guild.members.fetch({ query: arg, limit: 1 });
+        if (members.size > 0) return members.first().user;
+    } catch {}
+    
+    return null;
+}
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -151,16 +174,12 @@ client.on('messageCreate', async (message) => {
         let targetMember = message.member;
 
         if (args) {
-            const mentionMatch = args.match(/^<@!?(\d+)>$/);
-            const idMatch = args.match(/^(\d{17,19})$/);
-            const rawId = mentionMatch?.[1] || idMatch?.[1];
-            if (rawId) {
-                try {
-                    targetMember = await message.guild.members.fetch(rawId);
-                    targetUser = targetMember.user;
-                } catch {
-                    return message.reply('Could not find that user.');
-                }
+            const resolved = await resolveUser(message.guild, args);
+            if (resolved) {
+                targetUser = resolved;
+                targetMember = await message.guild.members.fetch(targetUser.id).catch(() => null);
+            } else {
+                return message.reply(`Could not find user: ${args}`);
             }
         }
 
@@ -213,18 +232,11 @@ client.on('messageCreate', async (message) => {
         let targetUser = message.author;
         
         if (args) {
-            const mentionMatch = args.match(/^<@!?(\d+)>$/);
-            const idMatch = args.match(/^(\d{17,19})$/);
-            const rawId = mentionMatch?.[1] || idMatch?.[1];
-            if (rawId) {
-                try {
-                    const member = await message.guild.members.fetch(rawId);
-                    targetUser = member.user;
-                } catch {
-                    return message.reply('Could not find that user.');
-                }
+            const resolved = await resolveUser(message.guild, args);
+            if (resolved) {
+                targetUser = resolved;
             } else {
-                return message.reply('Please mention a valid user.');
+                return message.reply(`Could not find user: ${args}`);
             }
         }
 
@@ -251,16 +263,22 @@ client.on('messageCreate', async (message) => {
 
     // ── =nichebattle ──────────────────────────────────────────────────────────
     if (contentLower.startsWith('=nichebattle') || contentLower.startsWith('=nb ') || contentLower === '=nb') {
-        const mentions = Array.from(message.mentions.users.values());
-        if (mentions.length === 0) return message.reply('Please mention 1 or 2 users to battle!');
+        const cmdPrefix = message.content.split(' ')[0];
+        const argsStr = message.content.slice(cmdPrefix.length).trim();
+        const args = argsStr ? argsStr.split(/\s+/) : [];
+        
+        if (args.length === 0) return message.reply('Please mention 1 or 2 users to battle! (e.g. `=nb @user`)');
         
         let u1, u2;
-        if (mentions.length === 1) {
+        if (args.length === 1) {
             u1 = message.author;
-            u2 = mentions[0];
+            u2 = await resolveUser(message.guild, args[0]);
+            if (!u2) return message.reply(`Could not find user: ${args[0]}`);
         } else {
-            u1 = mentions[0];
-            u2 = mentions[1];
+            u1 = await resolveUser(message.guild, args[0]);
+            u2 = await resolveUser(message.guild, args[1]);
+            if (!u1) return message.reply(`Could not find user: ${args[0]}`);
+            if (!u2) return message.reply(`Could not find user: ${args[1]}`);
         }
 
         if (u1.id === u2.id) return message.reply("You can't battle yourself!");
@@ -279,18 +297,27 @@ client.on('messageCreate', async (message) => {
                 LastFm.getNicheScore(lfm2)
             ]);
 
+            let winnerText = '';
+            let winnerIndex = 0;
+            if (score1 > score2) {
+                winnerText = `🏆 **${u1.username}** is more niche!`;
+                winnerIndex = 1;
+            } else if (score2 > score1) {
+                winnerText = `🏆 **${u2.username}** is more niche!`;
+                winnerIndex = 2;
+            } else {
+                winnerText = "🤝 It's a tie!";
+                winnerIndex = 0;
+            }
+
             const imageGen = new ImageGenerator();
             const buffer = await imageGen.generateNicheBattleImage(
                 u1.displayAvatarURL({ extension: 'png', size: 256 }),
-                u2.displayAvatarURL({ extension: 'png', size: 256 })
+                u2.displayAvatarURL({ extension: 'png', size: 256 }),
+                winnerIndex
             );
 
             const attachment = new AttachmentBuilder(buffer, { name: 'nichebattle.png' });
-            
-            let winnerText = '';
-            if (score1 > score2) winnerText = `🏆 **${u1.username}** is more niche!`;
-            else if (score2 > score1) winnerText = `🏆 **${u2.username}** is more niche!`;
-            else winnerText = "🤝 It's a tie!";
 
             const embed = new EmbedBuilder()
                 .setTitle(`Niche Battle: ${u1.username} vs ${u2.username}`)
