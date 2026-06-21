@@ -98,9 +98,50 @@ async function handleEditCommand(message) {
         });
 
     } catch (err) {
-        console.error('[OpenRouter] Error editing image:', err);
-        const errMsg = err.message || (err.title ? err.title : JSON.stringify(err));
-        return message.channel.send(`<@${message.author.id}> ❌ Failed to edit the image. Error: ${errMsg}`);
+        console.error('[OpenRouter] Error editing image, attempting Gemini fallback...', err.message || err);
+        
+        // --- GEMINI FALLBACK ---
+        try {
+            if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not set.");
+            
+            const { GoogleGenAI } = require("@google/genai");
+            const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+            
+            // 1. Ask Gemini to analyze the image and the edit instruction
+            const responseFetch = await fetch(imageUrl);
+            const blob = await responseFetch.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+            const base64Image = Buffer.from(arrayBuffer).toString("base64");
+            
+            const geminiPrompt = `Analyze the attached image and apply the user's edit instruction: "${prompt}". Write a highly detailed image generation prompt describing what the final edited image should look like. Only return the prompt text, nothing else.`;
+            
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { inlineData: { data: base64Image, mimeType: "image/png" } },
+                            { text: geminiPrompt }
+                        ]
+                    }
+                ]
+            });
+            
+            const finalPrompt = response.text.trim();
+            const encodedPrompt = encodeURIComponent(finalPrompt);
+            const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true`;
+            
+            await message.channel.send({
+                content: `<@${message.author.id}> ⚠️ *OpenRouter error! Falling back to Gemini Vision...*\n🎨 **Gemini Output:**\n> *${prompt}*`,
+                files: [pollinationsUrl]
+            });
+            
+        } catch (geminiErr) {
+            console.error('[GeminiFallback] Error:', geminiErr);
+            const errMsg = err.message || (err.title ? err.title : JSON.stringify(err));
+            return message.channel.send(`<@${message.author.id}> ❌ Failed to edit the image (and Gemini fallback failed). Error: ${errMsg}`);
+        }
     }
 }
 
