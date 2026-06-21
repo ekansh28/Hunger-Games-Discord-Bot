@@ -19,6 +19,7 @@ const { PermissionsBitField, EmbedBuilder, AttachmentBuilder } = require('discor
 const { isAuthorized } = require('./authorization');
 const { generateBanner } = require('./infectionBanner');
 const Stats = require('./stats');
+const { pool, initDB } = require('./infection_db');
 // generateTree still exported from infectionTree for external use;
 // handleTreeCommand now uses generateTreeViewport directly (imported inline).
 
@@ -49,20 +50,77 @@ const TREE_ALIASES = new Set(['infectiontree', 'it']);
 // ─────────────────────────────────────────────────────────────
 //  Persistence
 // ─────────────────────────────────────────────────────────────
-// Shape: { "<guildId>": { "<userId>": { "originalNickname": string|null } } }
+// Shape: { "<guildId>": { "<userId>": { "virusId": string|null, "infectedBy": string|null, "timestamp": number } } }
 let data = {};
 
-function load() {
-    try { data = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8')); }
-    catch { data = {}; }
-}
+// Shape: { "<guildId>": { "<roleId>": { "name": string, "color": string, "ownerId": string } } }
+let viruses = {};
 
-function save() {
-    try { fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2)); }
-    catch (err) { console.error('[AIDS] Failed to save infected.json:', err); }
-}
+const DATA_PATH = path.join(__dirname, 'infected.json');
+const VIRUSES_PATH = path.join(__dirname, 'viruses.json');
 
-load();
+async function load() {
+    await initDB();
+
+    // 1. Fetch from PostgreSQL
+    const resViruses = await pool.query('SELECT * FROM custom_viruses');
+    for (const row of resViruses.rows) {
+        if (!viruses[row.guild_id]) viruses[row.guild_id] = {};
+        viruses[row.guild_id][row.role_id] = {
+            name: row.name,
+            color: row.color,
+            ownerId: row.owner_id
+        };
+    }
+
+    const resInfections = await pool.query('SELECT * FROM infections');
+    for (const row of resInfections.rows) {
+        if (!data[row.guild_id]) data[row.guild_id] = {};
+        data[row.guild_id][row.user_id] = {
+            virusId: row.virus_id,
+            infectedBy: row.infected_by,
+            timestamp: Number(row.timestamp)
+        };
+    }
+
+    // 2. Migrate JSON files if they exist
+    if (fs.existsSync(DATA_PATH)) {
+        try {
+            const oldData = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
+            for (const gId in oldData) {
+                for (const uId in oldData[gId]) {
+                    if (!data[gId] || !data[gId][uId]) {
+                        const rec = oldData[gId][uId];
+                        await markInfected(gId, uId, rec.virusId, rec.infectedBy);
+                    }
+                }
+            }
+            fs.renameSync(DATA_PATH, DATA_PATH + '.migrated');
+            console.log('[AIDS] Migrated infected.json to PostgreSQL');
+        } catch (err) { console.error('Migration error:', err); }
+    }
+
+    if (fs.existsSync(VIRUSES_PATH)) {
+        try {
+            const oldViruses = JSON.parse(fs.readFileSync(VIRUSES_PATH, 'utf8'));
+            for (const gId in oldViruses) {
+                for (const rId in oldViruses[gId]) {
+                    if (!viruses[gId] || !viruses[gId][rId]) {
+                        const rec = oldViruses[gId][rId];
+                        if (!viruses[gId]) viruses[gId] = {};
+                        viruses[gId][rId] = rec;
+                        await pool.query(
+                            'INSERT INTO custom_viruses (role_id, guild_id, name, color, owner_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+                            [rId, gId, rec.name, rec.color, rec.ownerId]
+                        );
+                    }
+                }
+            }
+            fs.renameSync(VIRUSES_PATH, VIRUSES_PATH + '.migrated');
+            console.log('[AIDS] Migrated viruses.json to PostgreSQL');
+        } catch (err) { console.error('Migration error:', err); }
+    }
+}
 
 // ─────────────────────────────────────────────────────────────
 //  Core helpers
@@ -84,22 +142,31 @@ function getInfectedIds(guildId) {
     return data[guildId] ? Object.keys(data[guildId]) : [];
 }
 
-function markInfected(guildId, userId, originalNickname, infectedBy = null) {
+async function markInfected(guildId, userId, virusId, infectedBy = null) {
     if (!data[guildId]) data[guildId] = {};
+    const ts = Date.now();
     data[guildId][userId] = {
-        originalNickname: originalNickname ?? null,
+        virusId: virusId ?? null,
         infectedBy: infectedBy ?? null,
-        timestamp: Date.now(),
+        timestamp: ts,
     };
-    save();
+    
+    await pool.query(
+        `INSERT INTO infections (guild_id, user_id, virus_id, infected_by, timestamp) 
+         VALUES ($1, $2, $3, $4, $5) 
+         ON CONFLICT (guild_id, user_id) 
+         DO UPDATE SET virus_id = EXCLUDED.virus_id, infected_by = EXCLUDED.infected_by, timestamp = EXCLUDED.timestamp`,
+        [guildId, userId, virusId ?? null, infectedBy ?? null, ts]
+    ).catch(e => console.error('[AIDS] DB Error markInfected:', e));
 }
 
-function markCured(guildId, userId) {
+async function markCured(guildId, userId) {
     if (data[guildId]) {
         delete data[guildId][userId];
         if (!Object.keys(data[guildId]).length) delete data[guildId];
     }
-    save();
+    await pool.query('DELETE FROM infections WHERE guild_id = $1 AND user_id = $2', [guildId, userId])
+        .catch(e => console.error('[AIDS] DB Error markCured:', e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -111,30 +178,28 @@ async function applyInfection(member, infectedBy = null) {
     if (isInfected(guildId, userId)) return false;
     if (isImmune(member)) return false;
 
-    const originalNickname = member.nickname ?? null;
-    markInfected(guildId, userId, originalNickname, infectedBy);
+    // Determine which virus to pass on
+    let virusIdToPass = null;
+    if (infectedBy && data[guildId] && data[guildId][infectedBy]) {
+        virusIdToPass = data[guildId][infectedBy].virusId;
+    }
+
+    await markInfected(guildId, userId, virusIdToPass, infectedBy);
 
     // Track the infection spread in stats for the spreader
     if (infectedBy) {
         Stats.addInfectionSpread(guildId, infectedBy);
     }
 
+    // Attempt to assign the custom virus role, or the global AIDS_ROLE_ID if no custom virus exists
     try {
-        const base = member.displayName || member.user.username;
-        let newNick = `${base}${SUFFIX}`;
-        if (newNick.length > 32) newNick = `${base.slice(0, 32 - SUFFIX.length)}${SUFFIX}`;
-        await member.setNickname(newNick, 'HAS AIDS');
-    } catch (err) {
-        console.error(`[AIDS] setNickname failed for ${userId}:`, err?.message || err);
-    }
-
-    try {
-        const role = member.guild.roles.cache.get(AIDS_ROLE_ID);
+        const targetRoleId = virusIdToPass || AIDS_ROLE_ID;
+        const role = member.guild.roles.cache.get(targetRoleId);
         if (role) {
             const bot = member.guild.members.me;
             if (bot.permissions.has(PermissionsBitField.Flags.ManageRoles) &&
                 role.comparePositionTo(bot.roles.highest) < 0) {
-                await member.roles.add(role, 'GOT AIDS');
+                await member.roles.add(role, 'Infected with Virus');
             }
         }
     } catch (err) {
@@ -150,33 +215,65 @@ async function removeInfection(member) {
     if (!isInfected(guildId, userId)) return false;
 
     const record = data[guildId][userId];
+    const targetRoleId = record.virusId || AIDS_ROLE_ID;
 
+    // Clean up old nickname suffix just in case they are from the old system
     try {
-        let cleanNick = record.originalNickname || member.displayName;
-        while (cleanNick && cleanNick.includes(SUFFIX)) {
-            cleanNick = cleanNick.replace(SUFFIX, '').trim();
+        let cleanNick = member.displayName;
+        let changed = false;
+        while (cleanNick && cleanNick.includes(' (HAS AIDS)')) {
+            cleanNick = cleanNick.replace(' (HAS AIDS)', '').trim();
+            changed = true;
         }
-        if (cleanNick === '') cleanNick = null;
-        
-        await member.setNickname(cleanNick, 'Cured from AIDS');
+        if (changed) {
+            if (cleanNick === '') cleanNick = null;
+            await member.setNickname(cleanNick, 'Cured from Virus');
+        }
     } catch (err) {
         console.error(`[AIDS] restore nickname failed for ${userId}:`, err?.message || err);
     }
 
     try {
-        const role = member.guild.roles.cache.get(AIDS_ROLE_ID);
+        const role = member.guild.roles.cache.get(targetRoleId);
         if (role && member.roles.cache.has(role.id)) {
             const bot = member.guild.members.me;
             if (bot.permissions.has(PermissionsBitField.Flags.ManageRoles) &&
                 role.comparePositionTo(bot.roles.highest) < 0) {
-                await member.roles.remove(role, 'Cured from AIDS');
+                await member.roles.remove(role, 'Cured from Virus');
             }
         }
     } catch (err) {
         console.error(`[AIDS] remove role failed for ${userId}:`, err?.message || err);
     }
 
-    markCured(guildId, userId);
+    await markCured(guildId, userId);
+
+    // Auto-cleanup: If it's a custom virus and nobody has it anymore, delete the role
+    if (record.virusId && viruses[guildId] && viruses[guildId][record.virusId]) {
+        let stillInfected = 0;
+        if (data[guildId]) {
+            for (const uid in data[guildId]) {
+                if (data[guildId][uid].virusId === record.virusId) {
+                    stillInfected++;
+                }
+            }
+        }
+        
+        if (stillInfected === 0) {
+            try {
+                const roleToDelete = member.guild.roles.cache.get(record.virusId);
+                if (roleToDelete) {
+                    await roleToDelete.delete('Virus eradicated (0 infections left)');
+                }
+                delete viruses[guildId][record.virusId];
+                await pool.query('DELETE FROM custom_viruses WHERE role_id = $1', [record.virusId])
+                    .catch(e => console.error('[AIDS] DB Error delete virus:', e));
+            } catch (err) {
+                console.error(`[AIDS] failed to delete dead virus role ${record.virusId}:`, err);
+            }
+        }
+    }
+
     return true;
 }
 
@@ -606,21 +703,193 @@ async function handleTreeCommand(message, args) {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Custom Virus Commands — =virus create / =virus top
+// ─────────────────────────────────────────────────────────────
+async function handleVirusCommand(message) {
+    const args = message.content.split(/\s+/);
+    const cmd = args[1]?.toLowerCase();
+    const guild = message.guild;
+
+    if (!cmd) {
+        return message.reply('Usage: `=virus create <Name> <HexColor>` or `=virus top` or `=virus rename/color/icon`');
+    }
+
+    if (cmd === 'create') {
+        const name = args.slice(2, -1).join(' ');
+        const colorInput = args[args.length - 1];
+
+        if (!name || !/^#[0-9A-Fa-f]{6}$/i.test(colorInput)) {
+            return message.reply('Usage: `=virus create <Name> <#HexColor>`\nExample: `=virus create T-Virus #ff0000`');
+        }
+
+        if (isInfected(guild.id, message.author.id)) {
+            return message.reply('You are already infected with a virus! You must be cured before creating a new one.');
+        }
+
+        const bot = guild.members.me;
+        if (!bot.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+            return message.reply('I need the Manage Roles permission to create a virus.');
+        }
+
+        const mainRole = guild.roles.cache.get(AIDS_ROLE_ID);
+        if (!mainRole) {
+            return message.reply('The main Infection host role was not found.');
+        }
+
+        // Check Discord role limit (250)
+        if (guild.roles.cache.size >= 250) {
+            return message.reply('**Error:** The server has reached the maximum limit of 250 Discord roles. The role limit has been exceeded. Old viruses must be eradicated before creating new ones.');
+        }
+
+        try {
+            // Create role right below the main Infection role
+            const newRole = await guild.roles.create({
+                name: name,
+                color: colorInput,
+                position: mainRole.position - 1,
+                reason: `Custom virus created by ${message.author.username}`
+            });
+
+            if (!viruses[guild.id]) viruses[guild.id] = {};
+            viruses[guild.id][newRole.id] = {
+                name: name,
+                color: colorInput,
+                ownerId: message.author.id
+            };
+            await pool.query(
+                'INSERT INTO custom_viruses (role_id, guild_id, name, color, owner_id) VALUES ($1, $2, $3, $4, $5)',
+                [newRole.id, guild.id, name, colorInput, message.author.id]
+            ).catch(e => console.error('[AIDS] DB Error create virus:', e));
+
+            // Infect the creator with their new virus
+            await markInfected(guild.id, message.author.id, newRole.id, null);
+            await message.member.roles.add(newRole, 'Patient Zero');
+
+            return message.reply(`🦠 You have engineered and unleashed the **${name}** virus! Spread it by pinging others or replying to them.`);
+        } catch (err) {
+            console.error('[AIDS] create virus error:', err);
+            return message.reply('Failed to create the virus role. Please check my permissions or position.');
+        }
+    }
+
+    if (cmd === 'top') {
+        if (!viruses[guild.id]) return message.reply('There are no active custom viruses in this server.');
+
+        // Count infections per virus
+        const counts = {};
+        if (data[guild.id]) {
+            for (const uid in data[guild.id]) {
+                const vid = data[guild.id][uid].virusId;
+                if (vid && viruses[guild.id][vid]) {
+                    counts[vid] = (counts[vid] || 0) + 1;
+                }
+            }
+        }
+
+        const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        if (sorted.length === 0) return message.reply('There are no active infections for custom viruses.');
+
+        let desc = '';
+        for (let i = 0; i < sorted.length; i++) {
+            const [vid, count] = sorted[i];
+            const vData = viruses[guild.id][vid];
+            desc += `**${i + 1}.** ${vData.name} — **${count}** infected\n`;
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle('🦠 Most Deadly Viruses')
+            .setDescription(desc)
+            .setColor('#ff0000');
+        
+        return message.channel.send({ embeds: [embed] });
+    }
+
+    // Helper to find the user's owned virus
+    const myVirusId = Object.keys(viruses[guild.id] || {}).find(vid => viruses[guild.id][vid].ownerId === message.author.id);
+
+    if (cmd === 'rename') {
+        if (!myVirusId) return message.reply('You do not own any viruses. Create one first with `=virus create`!');
+        const myRole = guild.roles.cache.get(myVirusId);
+        if (!myRole) return message.reply('Your virus role is missing.');
+
+        const newName = args.slice(2).join(' ');
+        if (!newName) return message.reply('Usage: `=virus rename <NewName>`');
+
+        try {
+            await myRole.setName(newName, `Virus renamed by ${message.author.username}`);
+            viruses[guild.id][myVirusId].name = newName;
+            await pool.query('UPDATE custom_viruses SET name = $1 WHERE role_id = $2', [newName, myVirusId])
+                .catch(e => console.error('[AIDS] DB Error rename virus:', e));
+            return message.reply(`Your virus has been renamed to **${newName}**!`);
+        } catch (err) {
+            console.error(err);
+            return message.reply('Failed to rename the role. Please check my permissions.');
+        }
+    }
+
+    if (cmd === 'color') {
+        if (!myVirusId) return message.reply('You do not own any viruses. Create one first with `=virus create`!');
+        const myRole = guild.roles.cache.get(myVirusId);
+        if (!myRole) return message.reply('Your virus role is missing.');
+
+        const newColor = args[2];
+        if (!newColor || !/^#[0-9A-Fa-f]{6}$/i.test(newColor)) {
+            return message.reply('Usage: `=virus color <#HexColor>`\nExample: `=virus color #ff0000`');
+        }
+
+        try {
+            await myRole.setColor(newColor, `Virus color changed by ${message.author.username}`);
+            viruses[guild.id][myVirusId].color = newColor;
+            await pool.query('UPDATE custom_viruses SET color = $1 WHERE role_id = $2', [newColor, myVirusId])
+                .catch(e => console.error('[AIDS] DB Error color virus:', e));
+            return message.reply(`Your virus color has been updated!`);
+        } catch (err) {
+            console.error(err);
+            return message.reply('Failed to change the role color. Please check my permissions.');
+        }
+    }
+
+    if (cmd === 'icon') {
+        if (!myVirusId) return message.reply('You do not own any viruses. Create one first with `=virus create`!');
+        const myRole = guild.roles.cache.get(myVirusId);
+        if (!myRole) return message.reply('Your virus role is missing.');
+
+        try {
+            // Check if they attached an image
+            if (message.attachments.size > 0) {
+                const attachmentUrl = message.attachments.first().url;
+                await myRole.setIcon(attachmentUrl, `Virus icon changed by ${message.author.username}`);
+                return message.reply('Your virus icon has been updated from the image you attached!');
+            } else {
+                // Try to set it as a unicode emoji
+                const emoji = args[2];
+                if (!emoji) {
+                    return message.reply('Usage: `=virus icon <Emoji>` OR attach an image file with the command `=virus icon`.');
+                }
+                await myRole.edit({ unicodeEmoji: emoji }, `Virus icon changed by ${message.author.username}`);
+                return message.reply(`Your virus icon has been updated to ${emoji}!`);
+            }
+        } catch (err) {
+            console.error(err);
+            return message.reply('Failed to change the role icon. Please note that changing role icons requires the server to have enough Boosts (Level 2), and Discord might reject certain emojis.');
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Message event handler (to be called from index.js)
 // ─────────────────────────────────────────────────────────────
 async function handleMessage(message) {
     if (message.author.bot || !message.guild) return;
 
     // ── .bump — no longer grants immunity (role-based instead) ──
-    // However, it cures the person if they have the bump immune role
+    // However, it cures the person if they are infected
     if (message.content.trim().toLowerCase() === '.bump') {
         const bumpImmuneRole = message.guild.roles.cache.get(BUMP_IMMUNE_ROLE_ID);
         if (bumpImmuneRole && message.member.roles.cache.has(BUMP_IMMUNE_ROLE_ID)) {
-            // Check if they have the AIDS role, if yes, cure them
-            if (message.member.roles.cache.has(AIDS_ROLE_ID)) {
+            // Check if they are infected, if yes, cure them
+            if (isInfected(message.guild.id, message.author.id)) {
                 await removeInfection(message.member);
-                // Also ensure we reply letting them know they've been cured?
-                // Requirements just said "the person will have (HAS AIDS) and the role removed"
             }
         }
         return;
@@ -631,6 +900,17 @@ async function handleMessage(message) {
 
     const args = message.content.slice(prefix.length).trim().split(/\s+/);
     const command = args[0]?.toLowerCase();
+
+    // ── =virus ───────────────────────────────────────────────
+    if (command === 'virus') {
+        try {
+            await handleVirusCommand(message);
+        } catch (err) {
+            console.error('[AIDS] handleVirusCommand error:', err);
+            await message.channel.send('```Failed to process virus command.```');
+        }
+        return;
+    }
 
     // ── =infectiontree / =it ─────────────────────────────────
     if (TREE_ALIASES.has(command)) {
@@ -684,44 +964,22 @@ async function handleMessage(message) {
             }
             
             let cured = 0;
-            const role = message.guild.roles.cache.get(AIDS_ROLE_ID);
+            await message.guild.members.fetch();
             
-            // Fallback to JSON ids if the role doesn't exist
             const ids = getInfectedIds(message.guild.id);
             for (const id of ids) {
-                markCured(message.guild.id, id);
-            }
-            
-            if (role) {
-                await message.guild.members.fetch(); // Ensure all members are cached!
-                const membersWithRole = role.members.values();
-                for (const member of membersWithRole) {
-                    await member.roles.remove(role, 'Cured of AIDS (=cure all)');
-                    
-                    let currentNick = member.displayName;
-                    let nickChanged = false;
-                    while (currentNick && currentNick.includes(SUFFIX)) {
-                        currentNick = currentNick.replace(SUFFIX, '').trim();
-                        nickChanged = true;
+                const member = message.guild.members.cache.get(id);
+                if (member) {
+                    if (await removeInfection(member)) {
+                        cured++;
                     }
-            
-                    if (nickChanged) {
-                        try {
-                            const cleanNick = currentNick.length > 0 ? currentNick : 'CuredUser';
-                            await member.setNickname(cleanNick, 'Cured of AIDS');
-                        } catch (err) {}
-                    }
-                    cured++;
-                }
-            } else {
-                // If role missing, we just cure anyone who is in the JSON
-                for (const id of ids) {
-                    const m = message.guild.members.cache.get(id);
-                    if (m && await removeInfection(m)) cured++;
+                } else {
+                    // Force cleanup from DB if member left the server
+                    await markCured(message.guild.id, id);
                 }
             }
             
-            await message.channel.send(`${cured} subject(s) have been cured.`);
+            await message.channel.send(`${cured} subject(s) have been cured, and all dead virus strains have been eradicated.`);
             return;
         }
 
@@ -765,5 +1023,8 @@ module.exports = {
     markCured,
     applyInfection,
     removeInfection,
+    handleInfoCommand,
+    handleTreeCommand,
+    handleVirusCommand,
     handleMessage,
 };

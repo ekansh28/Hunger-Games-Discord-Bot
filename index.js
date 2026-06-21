@@ -1,6 +1,6 @@
 require('dotenv').config();
 const fs = require('fs');
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, PermissionsBitField, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, PermissionsBitField, REST, Routes, SlashCommandBuilder, StringSelectMenuBuilder } = require('discord.js');
 const EventLogic = require('./utils/eventLogic');
 const ImageGenerator = require('./utils/imageGenerator');
 const { commandData, handleInteraction: handleBrInteraction, handleBrPrefixCommand } = require('./banRoulette');
@@ -93,9 +93,10 @@ const leaderboardSlashCommand = new SlashCommandBuilder()
             .addChoices(...Stats.TRACKED_WORDS.map(w => ({ name: w, value: w })))
     );
 
-client.once('clientReady', async () => {
+client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     populateCache();
+    await Infection.load();
     try {
         const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         await rest.put(
@@ -509,74 +510,80 @@ client.on('messageCreate', async (message) => {
 
     // ── =help ─────────────────────────────────────────────────────────────────
     if (message.content === '=help') {
-        const embed = new EmbedBuilder()
-            .setTitle('📖 Bot Command Reference')
-            .setColor('#FFD700')
-            .setDescription('All prefix commands use `=`. Slash commands use `/`.')
-            .addFields(
-                {
-                    name: '🎮 Hunger Games  (`=play`)',
-                    value: [
-                        '`=play` -- Open a game lobby *(authorized only)*',
-                        '`=cancel` -- Cancel the current game or lobby *(authorized only)*',
-                        '`=kill <@user|all>` -- Eliminate a player mid-game *(admin only)*',
-                        '`=addp <@user|@role>` -- Authorize a user/role to host *(admin only)*',
-                        '`=removep <@user|@role>` -- Remove host authorization *(admin only)*',
-                    ].join('\n'),
-                    inline: false,
-                },
-                {
-                    name: '🎰 Ban Roulette  (`/br`)',
-                    value: [
-                        '`/br` -- Start a Ban Roulette lobby *(authorized only)*',
-                        '`/brcancel` -- Cancel the current lobby *(authorized only)*',
-                        'Players join via the button; last one standing wins.',
-                    ].join('\n'),
-                    inline: false,
-                },
-                {
-                    name: '🦠 AIDS / Infection',
-                    value: [
-                        '`=infect` -- Infect yourself with the AIDS',
-                        '`=cure [@user|all]` -- Cure a user or everyone *(authorized only)*',
-                        '`=infectioninfo` -- Full outbreak report with banner image',
-                        '  *Aliases:* `=AIDSinfo` `=outbreakstats` `=infected` `=infstats` `=infstat` `=vstat` `=vs`',
-                        '`=infectiontree` / `=it` -- Visual lineage tree of who infected whom',
-                        '',
-                        '**Spreading:** Infected users spread the AIDS by @mentioning healthy users.',
-                    ].join('\n'),
-                    inline: false,
-                },
-                {
-                    name: '📊 Stats & Leaderboards',
-                    value: [
-                        '`=stats [@user]` -- View your (or another user\'s) stats',
-                        '  *Aliases:* `=stat` `=s`',
-                        '`/stats [user]` -- Same, via slash command',
-                        '`=leaderboard [word]` -- View the top users for a tracked word',
-                        '  *Aliases:* `=lb` `=top` `=board`',
-                        '`/leaderboard [word]` -- Same, via slash command',
-                    ].join('\n'),
-                    inline: false,
-                },
-                {
-                    name: '🎵 Music',
-                    value: [
-                        '`/play` -- Play a song',
-                        '`=alabama` or `/alabama` -- Play alabama.mp3 and leave *(authorized only)*',
-                        '*(See slash command list for full music options)*',
-                    ].join('\n'),
-                    inline: false,
-                },
-                {
-                    name: '🔧 Other',
-                    value: '`=test` -- Test file attachment (debug)\n`=help` -- Show this message\n`=resetdb` -- Wipe the database *(admin only)*',
-                    inline: false,
-                },
-            )
-            .setFooter({ text: 'Authorized = added via =addp, or the main server admin.' })
-            .setTimestamp();
-        return message.reply({ embeds: [embed] });
+        const pages = {
+            'home': new EmbedBuilder()
+                .setTitle('📖 Bot Command Reference')
+                .setColor('#FFD700')
+                .setDescription('Welcome to the help menu! Please select a category from the dropdown below to view commands.\n\nAll prefix commands use `=`. Slash commands use `/`.'),
+            'games': new EmbedBuilder()
+                .setTitle('🎮 Games')
+                .setColor('#FFD700')
+                .addFields(
+                    { name: 'Hunger Games (`=play`)', value: '`=play` -- Open a game lobby *(authorized only)*\n`=cancel` -- Cancel the current game\n`=kill <@user>` -- Eliminate a player' },
+                    { name: 'Ban Roulette (`/br`)', value: '`/br` -- Start a Ban Roulette lobby\n`/brcancel` -- Cancel the lobby' },
+                    { name: 'GeoGuesser (`=gg`)', value: '`=gg` or `=geoguesser` -- Guess the country from a Mapillary street view image in 30 seconds!' }
+                ),
+            'virus': new EmbedBuilder()
+                .setTitle('🦠 Custom Viruses')
+                .setColor('#FFD700')
+                .addFields(
+                    { name: 'Create & Manage', value: '`=virus create <Name> <#HexColor>` -- Create a new virus\n`=virus rename <Name>`\n`=virus color <#HexColor>`\n`=virus icon <Emoji>`' },
+                    { name: 'Spread & Cure', value: '`=infect` -- Infect yourself\n`=cure [@user|all]` -- Cure a user\n**Spreading:** Ping/Reply to others to infect them with your virus!' },
+                    { name: 'Stats', value: '`=virus top` -- Deadliest viruses leaderboard\n`=infectioninfo` -- Outbreak stats\n`=infectiontree` -- Lineage tree' }
+                ),
+            'stats': new EmbedBuilder()
+                .setTitle('📊 Stats & Leaderboards')
+                .setColor('#FFD700')
+                .addFields(
+                    { name: 'User Stats', value: '`=stats [@user]` or `/stats` -- View word usage stats' },
+                    { name: 'Leaderboards', value: '`=leaderboard [word]` or `/leaderboard` -- Top users for a tracked word' }
+                ),
+            'music': new EmbedBuilder()
+                .setTitle('🎵 Music')
+                .setColor('#FFD700')
+                .addFields(
+                    { name: 'Playback', value: '`/play` -- Play a song\n`/skip`, `/pause`, `/resume`, `/stop` -- Controls\n`/queue` -- View queue' }
+                ),
+            'admin': new EmbedBuilder()
+                .setTitle('🔧 Admin & Other')
+                .setColor('#FFD700')
+                .addFields(
+                    { name: 'Permissions', value: '`=addp <@user|@role>` -- Authorize to host games\n`=removep <@user|@role>` -- Remove auth' },
+                    { name: 'Other', value: '`=test` -- Debug\n`=resetdb` -- Wipe the database *(admin only)*' }
+                )
+        };
+
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('help_menu')
+            .setPlaceholder('Select a category...')
+            .addOptions([
+                { label: 'Home', value: 'home', emoji: '🏠', description: 'Return to the main menu' },
+                { label: 'Games', value: 'games', emoji: '🎮', description: 'Hunger Games, Ban Roulette, GeoGuesser' },
+                { label: 'Custom Viruses', value: 'virus', emoji: '🦠', description: 'Create and spread your own virus' },
+                { label: 'Stats & Leaderboards', value: 'stats', emoji: '📊', description: 'Word tracking stats' },
+                { label: 'Music', value: 'music', emoji: '🎵', description: 'Music playback commands' },
+                { label: 'Admin', value: 'admin', emoji: '🔧', description: 'Permissions and settings' }
+            ]);
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        const reply = await message.reply({ embeds: [pages['home']], components: [row] });
+
+        const collector = reply.createMessageComponentCollector({ time: 120000 });
+
+        collector.on('collect', async (interaction) => {
+            if (interaction.user.id !== message.author.id) {
+                return interaction.reply({ content: 'Only the person who typed =help can use this menu.', flags: 64 });
+            }
+            const selected = interaction.values[0];
+            await interaction.update({ embeds: [pages[selected]] });
+        });
+
+        collector.on('end', () => {
+            selectMenu.setDisabled(true);
+            reply.edit({ components: [new ActionRowBuilder().addComponents(selectMenu)] }).catch(() => {});
+        });
+        return;
     }
 
     // ── =addp ─────────────────────────────────────────────────────────────────

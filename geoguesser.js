@@ -175,6 +175,8 @@ async function handleGeoGuesser(message) {
                 .setColor('#00ff00');
                 
             m.channel.send({ embeds: [winEmbed] });
+        } else {
+            m.react('❌').catch(() => null);
         }
     });
 
