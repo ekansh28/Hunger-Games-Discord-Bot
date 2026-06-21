@@ -56,7 +56,6 @@ let data = {};
 // Shape: { "<guildId>": { "<roleId>": { "name": string, "color": string, "ownerId": string } } }
 let viruses = {};
 
-const DATA_PATH = path.join(__dirname, 'infected.json');
 const VIRUSES_PATH = path.join(__dirname, 'viruses.json');
 
 async function load() {
@@ -230,7 +229,9 @@ async function removeInfection(member) {
             await member.setNickname(cleanNick, 'Cured from Virus');
         }
     } catch (err) {
-        console.error(`[AIDS] restore nickname failed for ${userId}:`, err?.message || err);
+        if (err?.code !== 50013) { // 50013 is Missing Permissions
+            console.error(`[AIDS] restore nickname failed for ${userId}:`, err?.message || err);
+        }
     }
 
     try {
