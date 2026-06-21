@@ -19,7 +19,7 @@ const DATA_PATH = path.join(__dirname, 'stats.json');
 
 // ── Configurable tracked word ────────────────────────────────
 // Change this to whatever word you want to track (case-insensitive).
-const TRACKED_WORD = 'sigma';
+const TRACKED_WORD = 'nigga';
 
 // ── Data shape ───────────────────────────────────────────────
 // {

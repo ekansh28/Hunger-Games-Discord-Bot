@@ -78,10 +78,10 @@ function buildStatsEmbed(targetUser, targetMember, stats) {
         .setTitle(`📊 ${displayName}'s Stats`)
         .setThumbnail(targetUser.displayAvatarURL({ extension: 'png', size: 256 }))
         .addFields(
-            { name: '🏆 Hunger Games Wins', value: stats.hgWins.toLocaleString(), inline: true },
-            { name: '🎰 Ban Roulette Wins', value: stats.brWins.toLocaleString(), inline: true },
-            { name: '🦠 People Infected', value: stats.infectionsSpread.toLocaleString(), inline: true },
-            { name: `💬 Times said "${Stats.TRACKED_WORD}"`, value: stats.wordCount.toLocaleString(), inline: true },
+            { name: 'Hunger Games Wins', value: stats.hgWins.toLocaleString(), inline: true },
+            { name: 'Ban Roulette Wins', value: stats.brWins.toLocaleString(), inline: true },
+            { name: 'People Infected', value: stats.infectionsSpread.toLocaleString(), inline: true },
+            { name: `Times said "${Stats.TRACKED_WORD}"`, value: stats.wordCount.toLocaleString(), inline: true },
         )
         .setTimestamp();
 }
