@@ -12,7 +12,7 @@
 
 'use strict';
 
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 const DATA_PATH = path.join(__dirname, 'stats.json');
@@ -66,10 +66,10 @@ function getRecord(guildId, userId) {
     }
     // Backfill missing fields for older records
     const r = data[guildId][userId];
-    if (r.hgWins           == null) r.hgWins = 0;
-    if (r.brWins           == null) r.brWins = 0;
+    if (r.hgWins == null) r.hgWins = 0;
+    if (r.brWins == null) r.brWins = 0;
     if (r.infectionsSpread == null) r.infectionsSpread = 0;
-    if (r.wordCount        == null) r.wordCount = 0;
+    if (r.wordCount == null) r.wordCount = 0;
     return r;
 }
 
