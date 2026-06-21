@@ -57,7 +57,7 @@ async function handleEditCommand(message) {
         const finalUrl = outImage.url ? outImage.url : outImage;
 
         await message.channel.send({
-            content: `<@${message.author.id}> 🎨 **Edited Image:**\n> *${prompt}*`,
+            content: `<@${message.author.id}>  **Edited Image:**\n> *${prompt}*`,
             files: [finalUrl]
         });
 
