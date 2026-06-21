@@ -128,6 +128,9 @@ async function handleEditCommand(message) {
                     if (!promptId) {
                         throw new Error("Failed to queue ComfyUI workflow");
                     }
+                    
+                    // Inform the user that generation has started
+                    message.channel.send(`<@${message.author.id}>  The job is queued and generation has started...`).catch(() => {});
                 } catch (err) {
                     clearTimeout(timeout);
                     ws.close();
@@ -149,14 +152,10 @@ async function handleEditCommand(message) {
                     
                     const outputs = msg.data.output;
                     let outName = null;
-                    if (outputs) {
-                        for (const nodeId in outputs) {
-                            if (outputs[nodeId].images && outputs[nodeId].images.length > 0) {
-                                outName = outputs[nodeId].images[0].filename;
-                                break;
-                            }
-                        }
+                    if (outputs && outputs.images && outputs.images.length > 0) {
+                        outName = outputs.images[0].filename;
                     }
+                    
                     if (outName) resolve(outName);
                     else reject(new Error("No output image found in execution result"));
                 } else if (msg.type === 'execution_error') {
