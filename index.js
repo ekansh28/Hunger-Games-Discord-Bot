@@ -1,19 +1,17 @@
 require('dotenv').config();
-const fs = require('fs'); 
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, PermissionsBitField, REST, Routes } = require('discord.js');
+const fs = require('fs');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, PermissionsBitField, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const EventLogic = require('./utils/eventLogic');
 const ImageGenerator = require('./utils/imageGenerator');
 const { commandData, handleInteraction: handleBrInteraction } = require('./banRoulette');
 const setupMusic = require('./music');
 const { authorizedUsers, authorizedRoles, isAuthorized } = require('./authorization');
 const Infection = require('./infection');
+const Stats = require('./stats');
 const path = require('path');
 
-// Role given to a user when they lose Ban Roulette (/br). Removed when that
-// user wins either /br or the Hunger Games (=play).
 const HG_ELIM_ROLE_ID = '1486781924671492266';
 
-// Removes HG_ELIM_ROLE_ID from a winning user, if they have it.
 async function removeElimRoleOnWin(guild, userId) {
     if (!guild || !userId) return;
     try {
@@ -37,11 +35,6 @@ function findAliveParticipantId(gameState) {
     return null;
 }
 
-function createBar(percent, length = 25) {
-    const filled = Math.round((percent / 100) * length);
-    return '█'.repeat(filled) + '░'.repeat(length - filled);
-}
-
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -55,20 +48,43 @@ const client = new Client({
 const music = setupMusic(client);
 const gameStates = new Map();
 
+const statsSlashCommand = new SlashCommandBuilder()
+    .setName('stats')
+    .setDescription('View player statistics.')
+    .addUserOption(opt =>
+        opt.setName('user')
+            .setDescription('The user to look up (defaults to yourself)')
+            .setRequired(false)
+    );
+
 client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     try {
         const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         await rest.put(
             Routes.applicationCommands(client.user.id),
-            { body: [...commandData, ...music.commandData] }
+            { body: [...commandData, ...music.commandData, statsSlashCommand.toJSON()] }
         );
-        console.log('Registered /br, /brcancel, and music slash commands.');
+        console.log('Registered /br, /brcancel, /stats, and music slash commands.');
     } catch (err) {
         console.error('Failed to register slash commands:', err);
     }
 });
 
+function buildStatsEmbed(targetUser, targetMember, stats) {
+    const displayName = targetMember?.displayName || targetUser.displayName || targetUser.username;
+    return new EmbedBuilder()
+        .setColor('#e94560')
+        .setTitle(`📊 ${displayName}'s Stats`)
+        .setThumbnail(targetUser.displayAvatarURL({ extension: 'png', size: 256 }))
+        .addFields(
+            { name: '🏆 Hunger Games Wins', value: stats.hgWins.toLocaleString(), inline: true },
+            { name: '🎰 Ban Roulette Wins', value: stats.brWins.toLocaleString(), inline: true },
+            { name: '🦠 People Infected', value: stats.infectionsSpread.toLocaleString(), inline: true },
+            { name: `💬 Times said "${Stats.TRACKED_WORD}"`, value: stats.wordCount.toLocaleString(), inline: true },
+        )
+        .setTimestamp();
+}
 
 client.on('messageCreate', async (message) => {
     // ── Infection spreading ───────────────────────────────────────────────────
@@ -80,8 +96,6 @@ client.on('messageCreate', async (message) => {
                     if (mentionedMember.user.bot) continue;
                     if (Infection.isInfected(message.guild.id, mentionedId)) continue;
                     if (Infection.isImmune(mentionedMember)) continue;
-                    const immuneUntil = Infection.bumpImmunity.get(mentionedId);
-                    if (immuneUntil && Date.now() < immuneUntil) continue;
                     await Infection.applyInfection(mentionedMember, message.member.id);
                 }
             }
@@ -90,11 +104,44 @@ client.on('messageCreate', async (message) => {
         }
     }
 
+    // ── Word tracking ─────────────────────────────────────────────────────────
+    if (message.guild && !message.author.bot) {
+        try {
+            Stats.trackMessage(message.guild.id, message.author.id, message.content);
+        } catch (err) {
+            console.error('[Stats] trackMessage error:', err);
+        }
+    }
+
     // ── =test ─────────────────────────────────────────────────────────────────
     if (message.content === '=test') {
         const buffer = Buffer.from('Hello World');
         await message.reply({ files: [{ attachment: buffer, name: 'test.txt' }] });
         return;
+    }
+
+    // ── =stats ────────────────────────────────────────────────────────────────
+    if (message.content.startsWith('=stats')) {
+        const args = message.content.slice(6).trim();
+        let targetUser = message.author;
+        let targetMember = message.member;
+
+        if (args) {
+            const mentionMatch = args.match(/^<@!?(\d+)>$/);
+            const idMatch = args.match(/^(\d{17,19})$/);
+            const rawId = mentionMatch?.[1] || idMatch?.[1];
+            if (rawId) {
+                try {
+                    targetMember = await message.guild.members.fetch(rawId);
+                    targetUser = targetMember.user;
+                } catch {
+                    return message.reply('Could not find that user.');
+                }
+            }
+        }
+
+        const stats = Stats.getStats(message.guild?.id, targetUser.id);
+        return message.reply({ embeds: [buildStatsEmbed(targetUser, targetMember, stats)] });
     }
 
     // ── =alabama ──────────────────────────────────────────────────────────────
@@ -214,6 +261,14 @@ client.on('messageCreate', async (message) => {
                         '`=infectiontree` / `=it` -- Visual lineage tree of who infected whom',
                         '',
                         '**Spreading:** Infected users spread the AIDS by @mentioning healthy users.',
+                    ].join('\n'),
+                    inline: false,
+                },
+                {
+                    name: '📊 Stats',
+                    value: [
+                        '`=stats [@user]` -- View your (or another user\'s) stats',
+                        '`/stats [user]` -- Same, via slash command',
                     ].join('\n'),
                     inline: false,
                 },
@@ -349,6 +404,7 @@ client.on('messageCreate', async (message) => {
                     setTimeout(async () => {
                         const adminUser = await client.users.fetch(message.author.id);
                         await message.channel.send({ embeds: [new EmbedBuilder().setTitle('ADMIN VICTORY').setDescription(`**${adminUser.displayName || adminUser.username}** wins by admin override!`).setColor('#FFD700').setThumbnail(adminUser.displayAvatarURL()).setTimestamp()] });
+                        if (message.guild) Stats.addHgWin(message.guild.id, message.author.id);
                         await removeElimRoleOnWin(message.guild, message.author.id);
                         gameStates.delete(message.channel.id);
                     }, 6000);
@@ -389,9 +445,11 @@ client.on('messageCreate', async (message) => {
                     if (buf) await message.channel.send({ files: [new AttachmentBuilder(buf, { name: 'admin-kill.png' })] });
                 } catch (e) { console.error(e); }
                 const winner = gameState.gameLogic.getWinner();
+                const winnerId = findAliveParticipantId(gameState);
                 if (winner) {
                     await message.channel.send({ embeds: [new EmbedBuilder().setTitle('VICTORY').setDescription(`**${winner.displayName || winner.username}** has won the Hunger Games!`).setColor('#FFD700').setThumbnail(winner.avatarURL).setTimestamp()] });
-                    await removeElimRoleOnWin(message.guild, findAliveParticipantId(gameState));
+                    if (message.guild && winnerId) Stats.addHgWin(message.guild.id, winnerId);
+                    await removeElimRoleOnWin(message.guild, winnerId);
                 }
                 gameStates.delete(message.channel.id);
             }, 6000);
@@ -402,6 +460,14 @@ client.on('messageCreate', async (message) => {
 
 client.on('interactionCreate', async (interaction) => {
     try {
+        // ── /stats slash command ──────────────────────────────────
+        if (interaction.isChatInputCommand() && interaction.commandName === 'stats') {
+            const targetUser = interaction.options.getUser('user') || interaction.user;
+            const targetMember = interaction.options.getMember('user') || interaction.member;
+            const stats = Stats.getStats(interaction.guild?.id, targetUser.id);
+            return interaction.reply({ embeds: [buildStatsEmbed(targetUser, targetMember, stats)] });
+        }
+
         if (interaction.isChatInputCommand() && music.commandNames.has(interaction.commandName)) {
             return music.handleInteraction(interaction);
         }
@@ -467,22 +533,20 @@ client.on('interactionCreate', async (interaction) => {
                 if (err?.code !== 10062) console.error('start_game update error:', err);
             }
 
-            setTimeout(async () => { await startGameSimulation(interaction.channel, gameState); }, 3000);
+            setTimeout(async () => { await startGameSimulation(interaction.channel, gameState, interaction.guild); }, 3000);
         }
     } catch (err) {
         if (err?.code !== 10062) console.error('[interactionCreate] error:', err);
     }
 });
 
-async function startGameSimulation(channel, gameState) {
+async function startGameSimulation(channel, gameState, guild) {
     const { gameLogic } = gameState;
     const imageGenerator = new ImageGenerator();
     let isFirstImage = true;
 
-    // ── Main game loop ────────────────────────────────────────────────────────
     try {
         while (gameLogic.getAliveCount() > 1) {
-            // ── Check for cancellation ────────────────────────────────────────
             if (gameState.cancelled || !gameStates.has(channel.id)) {
                 console.log('[HG] Game was cancelled mid-simulation, stopping.');
                 return;
@@ -525,7 +589,6 @@ async function startGameSimulation(channel, gameState) {
             if (gameLogic.getAliveCount() > 1) await new Promise(r => setTimeout(r, 6000));
         }
     } catch (err) {
-        // ── Catch-all: any crash inside the game loop ends the game cleanly ──
         console.error('[HG] Fatal error during game simulation:', err);
         try {
             await channel.send({
@@ -542,17 +605,14 @@ async function startGameSimulation(channel, gameState) {
         return;
     }
 
-    // ── Game over: determine winner ───────────────────────────────────────────
-    // Guard: cancelled mid-loop
     if (gameState.cancelled || !gameStates.has(channel.id)) return;
 
     await new Promise(r => setTimeout(r, 6000));
 
     const winner = gameLogic.getWinner();
+    const winnerId = findAliveParticipantId(gameState);
 
     if (!winner) {
-        // Edge case: all tributes died simultaneously (e.g. mutual-death event
-        // on the final two players). Announce a draw instead of crashing.
         console.warn('[HG] Game ended with no survivors (mutual death on final players).');
         await channel.send({
             embeds: [new EmbedBuilder()
@@ -565,7 +625,8 @@ async function startGameSimulation(channel, gameState) {
         return;
     }
 
-    // Normal victory
+    if (guild && winnerId) Stats.addHgWin(guild.id, winnerId);
+
     const winnerEmbed = new EmbedBuilder()
         .setTitle('🏆 VICTORY')
         .setDescription(`**${winner.displayName || winner.username}** has won the Hunger Games!\n\n*Congratulations, you have survived the arena!*`)
@@ -573,7 +634,7 @@ async function startGameSimulation(channel, gameState) {
         .setThumbnail(winner.avatarURL)
         .setTimestamp();
     await channel.send({ embeds: [winnerEmbed] });
-    await removeElimRoleOnWin(channel.guild, findAliveParticipantId(gameState));
+    await removeElimRoleOnWin(channel.guild, winnerId);
     gameStates.delete(channel.id);
 }
 

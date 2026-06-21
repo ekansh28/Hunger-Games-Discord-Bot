@@ -13,26 +13,30 @@
 
 'use strict';
 
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 const { PermissionsBitField, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { isAuthorized } = require('./authorization');
 const { generateBanner } = require('./infectionBanner');
+const Stats = require('./stats');
 // generateTree still exported from infectionTree for external use;
 // handleTreeCommand now uses generateTreeViewport directly (imported inline).
 
 // ─────────────────────────────────────────────────────────────
 //  Constants
 // ─────────────────────────────────────────────────────────────
-const DATA_PATH    = path.join(__dirname, 'infected.json');
-const AIDS_ROLE_ID   = '1516529671855018004';
+const DATA_PATH = path.join(__dirname, 'infected.json');
+const AIDS_ROLE_ID = '1516529671855018004';
 const IMMUNE_ROLE_IDS = ['1482031013738709277', '1482030917420712117'];
-const SUFFIX          = ' (HAS AIDS)';
+// Users with this role are permanently immune to infection (replaces bump immunity)
+const BUMP_IMMUNE_ROLE_ID = '1482008255554125844';
+const SUFFIX = ' (HAS AIDS)';
 
 // Only this user ID may use =cure all
 const CURE_ALL_USER_ID = '1198980443823947927';
 
-// Bump immunity: userId → expiry timestamp (ms). Protected from infection for 5h after bump.
+// bumpImmunity is kept as an empty Map export for backwards compatibility
+// (nothing sets it anymore, but other modules may import it)
 const bumpImmunity = new Map();
 
 const INFO_ALIASES = new Set([
@@ -65,7 +69,11 @@ load();
 // ─────────────────────────────────────────────────────────────
 function isImmune(member) {
     if (!member?.roles?.cache) return false;
-    return IMMUNE_ROLE_IDS.some(id => member.roles.cache.has(id));
+    // Check existing immune roles
+    if (IMMUNE_ROLE_IDS.some(id => member.roles.cache.has(id))) return true;
+    // Check bump-immunity role
+    if (member.roles.cache.has(BUMP_IMMUNE_ROLE_ID)) return true;
+    return false;
 }
 
 function isInfected(guildId, userId) {
@@ -80,8 +88,8 @@ function markInfected(guildId, userId, originalNickname, infectedBy = null) {
     if (!data[guildId]) data[guildId] = {};
     data[guildId][userId] = {
         originalNickname: originalNickname ?? null,
-        infectedBy:       infectedBy ?? null,
-        timestamp:        Date.now(),
+        infectedBy: infectedBy ?? null,
+        timestamp: Date.now(),
     };
     save();
 }
@@ -99,20 +107,21 @@ function markCured(guildId, userId) {
 // ─────────────────────────────────────────────────────────────
 async function applyInfection(member, infectedBy = null) {
     const { id: guildId } = member.guild;
-    const { id: userId }  = member.user;
+    const { id: userId } = member.user;
     if (isInfected(guildId, userId)) return false;
-    if (isImmune(member))            return false;
-
-    // Bump immunity: protected for 5 hours after .bump
-    const immuneUntil = bumpImmunity.get(userId);
-    if (immuneUntil && Date.now() < immuneUntil) return false;
+    if (isImmune(member)) return false;
 
     const originalNickname = member.nickname ?? null;
     markInfected(guildId, userId, originalNickname, infectedBy);
 
+    // Track the infection spread in stats for the spreader
+    if (infectedBy) {
+        Stats.addInfectionSpread(guildId, infectedBy);
+    }
+
     try {
-        const base    = member.displayName || member.user.username;
-        let   newNick = `${base}${SUFFIX}`;
+        const base = member.displayName || member.user.username;
+        let newNick = `${base}${SUFFIX}`;
         if (newNick.length > 32) newNick = `${base.slice(0, 32 - SUFFIX.length)}${SUFFIX}`;
         await member.setNickname(newNick, 'HAS AIDS');
     } catch (err) {
@@ -137,7 +146,7 @@ async function applyInfection(member, infectedBy = null) {
 
 async function removeInfection(member) {
     const { id: guildId } = member.guild;
-    const { id: userId }  = member.user;
+    const { id: userId } = member.user;
     if (!isInfected(guildId, userId)) return false;
 
     const record = data[guildId][userId];
@@ -172,73 +181,51 @@ async function removeInfection(member) {
 /** Build a fixed-width ASCII progress bar using Unicode block chars. */
 function buildBar(pct, width = 30) {
     const filled = Math.round((pct / 100) * width);
-    const empty  = width - filled;
+    const empty = width - filled;
     return '\u2588'.repeat(Math.max(0, filled)) + '\u2591'.repeat(Math.max(0, empty));
 }
 
-/** Right-pad / left-pad a string to a fixed width. */
-function pad(str, len, char = ' ') {
-    str = String(str);
-    return str.length >= len ? str.slice(0, len) : str + char.repeat(len - str.length);
-}
-function lpad(str, len, char = ' ') {
-    str = String(str);
-    return str.length >= len ? str.slice(0, len) : char.repeat(len - str.length) + str;
-}
-
 function getThreatLevel(pct) {
-    if (pct < 10)  return 'LOW';
-    if (pct < 25)  return 'MODERATE';
-    if (pct < 50)  return 'HIGH';
-    if (pct < 75)  return 'CRITICAL';
+    if (pct < 10) return 'LOW';
+    if (pct < 25) return 'MODERATE';
+    if (pct < 50) return 'HIGH';
+    if (pct < 75) return 'CRITICAL';
     return 'EXTINCTION EVENT';
 }
 
 function getOutbreakStatus(pct) {
-    if (pct === 0)  return 'CONTAINED';
-    if (pct < 10)  return 'ACTIVE';
-    if (pct < 30)  return 'ACCELERATING';
-    if (pct < 60)  return 'UNCONTROLLED';
+    if (pct === 0) return 'CONTAINED';
+    if (pct < 10) return 'ACTIVE';
+    if (pct < 30) return 'ACCELERATING';
+    if (pct < 60) return 'UNCONTROLLED';
     return 'COLLAPSE';
 }
 
 function getConcentration(pct) {
-    if (pct < 5)   return 'MINIMAL';
-    if (pct < 15)  return 'LIGHT';
-    if (pct < 35)  return 'MODERATE';
-    if (pct < 60)  return 'HEAVY';
+    if (pct < 5) return 'MINIMAL';
+    if (pct < 15) return 'LIGHT';
+    if (pct < 35) return 'MODERATE';
+    if (pct < 60) return 'HEAVY';
     return 'SEVERE';
 }
 
 function getClassification(pct) {
-    if (pct < 10)  return 'Isolated Cases';
-    if (pct < 25)  return 'Local Outbreak';
-    if (pct < 50)  return 'Regional Epidemic';
-    if (pct < 75)  return 'Severe Pandemic';
+    if (pct < 10) return 'Isolated Cases';
+    if (pct < 25) return 'Local Outbreak';
+    if (pct < 50) return 'Regional Epidemic';
+    if (pct < 75) return 'Severe Pandemic';
     return 'Extinction Event';
 }
 
 function getEmbedColor(threatLevel) {
     switch (threatLevel) {
-        case 'LOW':              return 0x333333;
-        case 'MODERATE':        return 0xcc6600;
-        case 'HIGH':            return 0x8b0000;
-        case 'CRITICAL':        return 0xcc0000;
-        case 'EXTINCTION EVENT':return 0x440000;
-        default:                return 0x333333;
+        case 'LOW': return 0x333333;
+        case 'MODERATE': return 0xcc6600;
+        case 'HIGH': return 0x8b0000;
+        case 'CRITICAL': return 0xcc0000;
+        case 'EXTINCTION EVENT': return 0x440000;
+        default: return 0x333333;
     }
-}
-
-/** Survival probability — inverse sigmoid-ish feel */
-function survivalProbability(pct) {
-    if (pct === 0) return '100.00%';
-    const raw = Math.max(0, 100 - (pct * 1.15));
-    return `${raw.toFixed(2)}%`;
-}
-
-/** Contamination score 0–100 */
-function contaminationScore(pct) {
-    return Math.min(100, Math.round(pct * 1.1));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -247,35 +234,29 @@ function contaminationScore(pct) {
 
 const MS_PER_DAY = 86_400_000;
 
-/**
- * Given the raw guild data object and a set of present user IDs,
- * returns a temporal stats object.
- */
 function computeTemporalStats(guildData, presentIdSet, population) {
-    const now     = Date.now();
+    const now = Date.now();
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
     const todayMs = todayStart.getTime();
 
-    // Only entries for users still in the server
     const entries = Object.entries(guildData)
         .filter(([id]) => presentIdSet.has(id))
         .map(([id, rec]) => ({ id, ...rec }));
 
     if (entries.length === 0) {
         return {
-            patientZeroId:    null,
-            patientZeroTs:    null,
-            mostRecentId:     null,
-            mostRecentTs:     null,
-            newToday:         0,
-            outbreakAgeDays:  null,
-            dailyGrowthRate:  null,
-            timeToFiftyPct:   null,
+            patientZeroId: null,
+            patientZeroTs: null,
+            mostRecentId: null,
+            mostRecentTs: null,
+            newToday: 0,
+            outbreakAgeDays: null,
+            dailyGrowthRate: null,
+            timeToFiftyPct: null,
         };
     }
 
-    // Sort by timestamp ascending (nulls last)
     const sorted = [...entries].sort((a, b) => {
         if (a.timestamp == null && b.timestamp == null) return 0;
         if (a.timestamp == null) return 1;
@@ -284,47 +265,39 @@ function computeTemporalStats(guildData, presentIdSet, population) {
     });
 
     const earliest = sorted[0];
-    const latest   = sorted[sorted.length - 1];
+    const latest = sorted[sorted.length - 1];
 
-    // Patient zero: earliest timestamp; prefer infectedBy===null as tiebreaker
     let patientZero = sorted[0];
     for (const e of sorted) {
-        if (e.timestamp == null) break; // no ts = unknown, skip
+        if (e.timestamp == null) break;
         if (e.timestamp !== sorted[0].timestamp) break;
         if (e.infectedBy === null) { patientZero = e; break; }
     }
 
-    // New infections today
     const newToday = entries.filter(e => e.timestamp != null && e.timestamp >= todayMs).length;
 
-    // Outbreak age
     let outbreakAgeDays = null;
     if (earliest.timestamp != null) {
         outbreakAgeDays = Math.max(0, Math.floor((now - earliest.timestamp) / MS_PER_DAY));
     }
 
-    // Daily growth rate — use 7-day rolling window if enough data, else lifetime average
     let dailyGrowthRate = null;
     if (outbreakAgeDays != null && outbreakAgeDays > 0) {
         const windowStart = now - 7 * MS_PER_DAY;
         const recentEntries = entries.filter(e => e.timestamp != null && e.timestamp >= windowStart);
         if (recentEntries.length >= 2) {
-            // infections per day over last 7 days
             dailyGrowthRate = recentEntries.length / 7;
         } else {
-            // lifetime average
             dailyGrowthRate = entries.filter(e => e.timestamp != null).length / outbreakAgeDays;
         }
     } else if (outbreakAgeDays === 0 && entries.length > 1) {
-        // All infected today — use count as rate (single-day outbreak)
         dailyGrowthRate = entries.length;
     }
 
-    // Estimated time to 50% infection
     let timeToFiftyPct = null;
     if (population > 0) {
         const target50 = Math.ceil(population * 0.5);
-        const current  = entries.length;
+        const current = entries.length;
         if (current >= target50) {
             timeToFiftyPct = 'ALREADY PAST 50%';
         } else if (dailyGrowthRate != null && dailyGrowthRate > 0) {
@@ -342,30 +315,15 @@ function computeTemporalStats(guildData, presentIdSet, population) {
     }
 
     return {
-        patientZeroId:   patientZero?.id ?? null,
-        patientZeroTs:   patientZero?.timestamp ?? null,
-        mostRecentId:    latest.id,
-        mostRecentTs:    latest.timestamp ?? null,
+        patientZeroId: patientZero?.id ?? null,
+        patientZeroTs: patientZero?.timestamp ?? null,
+        mostRecentId: latest.id,
+        mostRecentTs: latest.timestamp ?? null,
         newToday,
         outbreakAgeDays,
         dailyGrowthRate,
         timeToFiftyPct,
     };
-}
-
-/** Format a Unix ms timestamp as a short UTC date string, or 'UNKNOWN' */
-function fmtDate(ts) {
-    if (ts == null) return 'UNKNOWN';
-    const d = new Date(ts);
-    const pad2 = n => String(n).padStart(2, '0');
-    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}  ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())} UTC`;
-}
-
-/** "1 in N" infection ratio string */
-function infectionRatio(infected, population) {
-    if (infected === 0 || population === 0) return 'N/A';
-    const n = Math.round(population / infected);
-    return `1 in ${n}`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -375,18 +333,15 @@ async function handleInfoCommand(message) {
     const guild = message.guild;
     if (!guild) return;
 
-    // Fetch all members (uses cache; only hits API if cache is cold)
     try {
         await guild.members.fetch();
     } catch (err) {
         console.error('[AIDS] members.fetch failed:', err?.message || err);
     }
 
-    // ── Build member sets ────────────────────────────────────
-    const allMembers  = guild.members.cache.filter(m => !m.user.bot);
-    const population  = allMembers.size;
+    const allMembers = guild.members.cache.filter(m => !m.user.bot);
+    const population = allMembers.size;
 
-    // Infected IDs from disk, filtered to members still in the server
     let rawIds = [];
     try {
         rawIds = getInfectedIds(guild.id);
@@ -405,26 +360,22 @@ async function handleInfoCommand(message) {
         });
 
     const infectedCount = infectedMembers.length;
-    const healthyCount  = Math.max(0, population - infectedCount);
+    const healthyCount = Math.max(0, population - infectedCount);
 
-    // Safe division
-    const infPct     = population > 0 ? (infectedCount / population) * 100 : 0;
-    const healthyPct = population > 0 ? (healthyCount  / population) * 100 : 100;
+    const infPct = population > 0 ? (infectedCount / population) * 100 : 0;
+    const healthyPct = population > 0 ? (healthyCount / population) * 100 : 100;
 
-    // ── Derived stats ────────────────────────────────────────
-    const threatLevel    = getThreatLevel(infPct);
+    const threatLevel = getThreatLevel(infPct);
     const outbreakStatus = getOutbreakStatus(infPct);
-    const concentration  = getConcentration(infPct);
+    const concentration = getConcentration(infPct);
     const classification = getClassification(infPct);
-    const color          = getEmbedColor(threatLevel);
+    const color = getEmbedColor(threatLevel);
 
-    // ── Temporal stats ────────────────────────────────────────
     let guildData = {};
     try { guildData = data[guild.id] ? { ...data[guild.id] } : {}; } catch { guildData = {}; }
     const presentIdSet = new Set(allMembers.keys());
     const temporal = computeTemporalStats(guildData, presentIdSet, population);
 
-    // Resolve display names for patient zero and most recent
     const patientZeroName = temporal.patientZeroId
         ? (allMembers.get(temporal.patientZeroId)?.displayName
             || allMembers.get(temporal.patientZeroId)?.user?.username
@@ -436,15 +387,14 @@ async function handleInfoCommand(message) {
             || 'UNKNOWN')
         : 'NONE';
 
-    // ── Banner image ─────────────────────────────────────────
     let bannerAttachment = null;
     try {
         const bannerBuf = await generateBanner({
-            serverName:      guild.name,
+            serverName: guild.name,
             population,
-            infected:        infectedCount,
-            healthy:         healthyCount,
-            infectionPct:    infPct,
+            infected: infectedCount,
+            healthy: healthyCount,
+            infectionPct: infPct,
             threatLevel,
             outbreakStatus,
             classification,
@@ -455,10 +405,8 @@ async function handleInfoCommand(message) {
         console.error('[AIDS] Banner generation failed:', err?.message || err);
     }
 
-    // ── ASCII dashboard block ─────────────────────────────────
     const barWidth = 28;
-
-    const infBar     = buildBar(infPct,     barWidth);
+    const infBar = buildBar(infPct, barWidth);
     const healthyBar = buildBar(healthyPct, barWidth);
 
     const dashLines = [
@@ -467,43 +415,26 @@ async function handleInfoCommand(message) {
     ];
     const dashboard = '```\n' + dashLines.join('\n') + '\n```';
 
-    // ── Infected subjects list ────────────────────────────────
     const DISPLAY_LIMIT = 15;
     let subjectsStr;
     if (infectedCount === 0) {
         subjectsStr = 'None. Population is currently clean.';
     } else {
-        const shown   = infectedMembers.slice(0, DISPLAY_LIMIT).map(m => `<@${m.id}>`);
+        const shown = infectedMembers.slice(0, DISPLAY_LIMIT).map(m => `<@${m.id}>`);
         const remaining = infectedCount - shown.length;
-        subjectsStr  = shown.join('  ');
+        subjectsStr = shown.join('  ');
         if (remaining > 0) subjectsStr += `  +${remaining} more`;
     }
 
-    // ── Risk assessment ───────────────────────────────────────
     let riskAssessment;
-    if (infPct === 0)       riskAssessment = 'No active threat detected. Monitor for new cases.';
-    else if (infPct < 5)    riskAssessment = 'Low-level presence. Standard monitoring protocol.';
-    else if (infPct < 15)   riskAssessment = 'Elevated risk. Isolation of confirmed subjects advised.';
-    else if (infPct < 35)   riskAssessment = 'High risk. Interaction with infected subjects strongly discouraged.';
-    else if (infPct < 60)   riskAssessment = 'Severe threat. Population integrity compromised.';
-    else if (infPct < 80)   riskAssessment = 'Critical. Expect rapid escalation. Containment likely failed.';
-    else                    riskAssessment = 'TERMINAL. The healthy population is a minority. All hope of containment is lost.';
+    if (infPct === 0) riskAssessment = 'No active threat detected. Monitor for new cases.';
+    else if (infPct < 5) riskAssessment = 'Low-level presence. Standard monitoring protocol.';
+    else if (infPct < 15) riskAssessment = 'Elevated risk. Isolation of confirmed subjects advised.';
+    else if (infPct < 35) riskAssessment = 'High risk. Interaction with infected subjects strongly discouraged.';
+    else if (infPct < 60) riskAssessment = 'Severe threat. Population integrity compromised.';
+    else if (infPct < 80) riskAssessment = 'Critical. Expect rapid escalation. Containment likely failed.';
+    else riskAssessment = 'TERMINAL. The healthy population is a minority. All hope of containment is lost.';
 
-    // ── Healthy/infected ratio string ─────────────────────────
-    let ratioStr;
-    if (infectedCount === 0) {
-        ratioStr = 'No infected subjects — ratio undefined.';
-    } else if (healthyCount === 0) {
-        ratioStr = 'No healthy subjects remain.';
-    } else {
-        const hPerI = (healthyCount / infectedCount).toFixed(2);
-        ratioStr    = `${hPerI} healthy subjects per infected subject`;
-    }
-
-    // ── Encounter probability ─────────────────────────────────
-    const encounterPct = infPct.toFixed(2);
-
-    // ── Build compact embed ───────────────────────────────────
     const dayRate = temporal.dailyGrowthRate != null
         ? temporal.dailyGrowthRate.toFixed(1) + '/day'
         : '?';
@@ -511,7 +442,6 @@ async function handleInfoCommand(message) {
         ? `Day ${temporal.outbreakAgeDays}`
         : '?';
 
-    // Two compact inline stat blocks
     const statsBlock = [
         '```',
         `Pop      : ${population.toLocaleString()}`,
@@ -534,12 +464,12 @@ async function handleInfoCommand(message) {
         .setTitle(`AIDS OUTBREAK REPORT  ·  ${guild.name}`)
         .setDescription(dashboard)
         .addFields(
-            { name: 'STATISTICS',       value: statsBlock,  inline: true },
-            { name: 'THREAT',           value: threatBlock, inline: true },
+            { name: 'STATISTICS', value: statsBlock, inline: true },
+            { name: 'THREAT', value: threatBlock, inline: true },
         )
         .addFields(
-            { name: 'RISK',             value: `\`\`\`${riskAssessment}\`\`\``, inline: false },
-            { name: `INFECTED [${infectedCount}]`, value: subjectsStr || 'None.',    inline: false },
+            { name: 'RISK', value: `\`\`\`${riskAssessment}\`\`\``, inline: false },
+            { name: `INFECTED [${infectedCount}]`, value: subjectsStr || 'None.', inline: false },
         )
         .setFooter({ text: `Patient Zero: ${patientZeroName}  ·  Last: ${mostRecentName}  ·  New today: ${temporal.newToday}` })
         .setTimestamp();
@@ -554,30 +484,23 @@ async function handleInfoCommand(message) {
 
 // ─────────────────────────────────────────────────────────────
 //  Infection tree command — interactive paginated viewport
-//  Usage: =it          — opens navigable viewport
-//         =it zoom 2   — opens at 2× zoom
-//
-//  Buttons: ⬆ ⬇ ⬅ ➡ (pan)  🔍+ 🔍- (zoom)  ✖ (close)
 // ─────────────────────────────────────────────────────────────
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 const { generateTreeViewport } = require('./infectionTree');
 
-// Pan step in natural pixels (before zoom scaling)
 const PAN_STEP_BASE = 120;
 
 async function handleTreeCommand(message, args) {
     const guild = message.guild;
     if (!guild) return;
 
-    // Parse optional initial zoom: =it zoom <N>  or  =it <N>
     let zoom = 1;
     if (args.length >= 2) {
         const zoomArg = args[1]?.toLowerCase() === 'zoom' ? args[2] : args[1];
-        const parsed  = parseFloat(zoomArg);
+        const parsed = parseFloat(zoomArg);
         if (!isNaN(parsed) && parsed > 0) zoom = Math.min(parsed, 8);
     }
 
-    // Fetch members
     try { await guild.members.fetch(); }
     catch (err) { console.error('[AIDS] members.fetch failed:', err?.message || err); }
 
@@ -592,16 +515,13 @@ async function handleTreeCommand(message, args) {
         nameMap.set(id, member.displayName || member.user.username);
     }
 
-    // Check if anyone is infected
     if (!Object.keys(guildData).length) {
         await message.channel.send('```No infected subjects — tree is empty.```');
         return;
     }
 
-    // State
     let panX = 0, panY = 0;
 
-    // Render first frame
     const renderFrame = async () => {
         const result = await generateTreeViewport({
             infectedData: guildData,
@@ -617,18 +537,17 @@ async function handleTreeCommand(message, args) {
         return result;
     };
 
-    // Build button rows
     const buildRows = () => {
         const nav = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('it_up')    .setLabel('⬆').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('it_left')  .setLabel('⬅').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('it_right') .setLabel('➡').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('it_down')  .setLabel('⬇').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('it_up').setLabel('⬆').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('it_left').setLabel('⬅').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('it_right').setLabel('➡').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('it_down').setLabel('⬇').setStyle(ButtonStyle.Secondary),
         );
         const zoom_ctrl = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('it_zin')   .setLabel('🔍+').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('it_zout')  .setLabel('🔍−').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('it_close') .setLabel('✖ Close').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('it_zin').setLabel('🔍+').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('it_zout').setLabel('🔍−').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('it_close').setLabel('✖ Close').setStyle(ButtonStyle.Danger),
         );
         return [nav, zoom_ctrl];
     };
@@ -641,10 +560,9 @@ async function handleTreeCommand(message, args) {
         components: buildRows(),
     });
 
-    // Button collector — any user in the guild can navigate
     const collector = reply.createMessageComponentCollector({
         componentType: ComponentType.Button,
-        time: 5 * 60 * 1000, // 5 minutes
+        time: 5 * 60 * 1000,
         filter: i => i.customId.startsWith('it_') && !i.user.bot,
     });
 
@@ -652,15 +570,15 @@ async function handleTreeCommand(message, args) {
         try {
             await interaction.deferUpdate();
 
-            const PAN = PAN_STEP_BASE / zoom; // pan step scales with zoom
+            const PAN = PAN_STEP_BASE / zoom;
 
             switch (interaction.customId) {
-                case 'it_up':    panY -= PAN; break;
-                case 'it_down':  panY += PAN; break;
-                case 'it_left':  panX -= PAN; break;
+                case 'it_up': panY -= PAN; break;
+                case 'it_down': panY += PAN; break;
+                case 'it_left': panX -= PAN; break;
                 case 'it_right': panX += PAN; break;
-                case 'it_zin':   zoom = Math.min(8,   +(zoom * 1.5).toFixed(2)); break;
-                case 'it_zout':  zoom = Math.max(0.25, +(zoom / 1.5).toFixed(2)); break;
+                case 'it_zin': zoom = Math.min(8, +(zoom * 1.5).toFixed(2)); break;
+                case 'it_zout': zoom = Math.max(0.25, +(zoom / 1.5).toFixed(2)); break;
                 case 'it_close':
                     collector.stop('closed');
                     await reply.edit({ components: [] });
@@ -687,45 +605,17 @@ async function handleTreeCommand(message, args) {
 async function handleMessage(message) {
     if (message.author.bot || !message.guild) return;
 
-    // ── .bump — silently cure + grant 5-hour infection immunity ──
+    // ── .bump — no longer grants immunity (role-based instead) ──
+    // We still silently ignore the .bump command so it doesn't
+    // accidentally trigger other handlers.
     if (message.content.trim().toLowerCase() === '.bump') {
-        const { id: guildId } = message.guild;
-        const member = message.member;
-        const userId = member.id;
-
-        // Cure if currently infected (silent)
-        if (isInfected(guildId, userId)) {
-            await removeInfection(member);
-        }
-
-        // Add 5-hour immunity unless "You're on cooldown" message appears from Disboard (235148962103951360)
-        // We check the next few messages for up to 10 seconds.
-        const DISBOARD_ID = '235148962103951360';
-        const filter = m => m.author.id === DISBOARD_ID && m.channel.id === message.channel.id;
-        const collector = message.channel.createMessageCollector({ filter, time: 10000, max: 3 });
-
-        let onCooldown = false;
-        collector.on('collect', m => {
-            const content = (m.content || m.embeds[0]?.description || m.embeds[0]?.title || '').toLowerCase();
-            if (content.includes("you're on cooldown")) {
-                onCooldown = true;
-                collector.stop();
-            }
-        });
-
-        collector.on('end', () => {
-            if (!onCooldown) {
-                // Grant 5-hour bump immunity (5 * 60 * 60 * 1000 ms)
-                bumpImmunity.set(userId, Date.now() + 5 * 60 * 60 * 1000);
-            }
-        });
         return;
     }
 
     const prefix = '=';
     if (!message.content.startsWith(prefix)) return;
 
-    const args    = message.content.slice(prefix.length).trim().split(/\s+/);
+    const args = message.content.slice(prefix.length).trim().split(/\s+/);
     const command = args[0]?.toLowerCase();
 
     // ── =infectiontree / =it ─────────────────────────────────
@@ -774,17 +664,16 @@ async function handleMessage(message) {
         const sub = args[1]?.toLowerCase();
 
         if (sub === 'all') {
-            // =cure all is restricted to a single hardcoded user
             if (message.author.id !== CURE_ALL_USER_ID) {
                 await message.channel.send('You are not authorized to cure all subjects.');
                 return;
             }
-            const ids    = getInfectedIds(message.guild.id);
-            let   cured  = 0;
+            const ids = getInfectedIds(message.guild.id);
+            let cured = 0;
             for (const id of ids) {
                 const m = message.guild.members.cache.get(id);
                 if (m && await removeInfection(m)) cured++;
-                else if (!m) markCured(message.guild.id, id); // ghost cleanup
+                else if (!m) markCured(message.guild.id, id);
             }
             await message.channel.send(`${cured} subject(s) have been cured.`);
             return;
@@ -823,7 +712,7 @@ module.exports = {
     IMMUNE_ROLE_IDS,
     INFO_ALIASES,
     TREE_ALIASES,
-    bumpImmunity,
+    bumpImmunity,        // kept for backwards-compat (always empty now)
     isImmune,
     isInfected,
     getInfectedIds,

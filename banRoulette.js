@@ -17,6 +17,7 @@ const { createCanvas, loadImage, registerFont } = require('canvas');
 const path = require('path');
 const fs = require('fs');
 const { isAuthorized } = require('./authorization');
+const Stats = require('./stats');
 
 // ── Load custom font from fonts/font.ttf (same as imageGenerator) ──
 const FONT_PATH = path.join(__dirname, '..', 'fonts', 'font.ttf');
@@ -27,20 +28,18 @@ const FONT_FAMILY = fs.existsSync(FONT_PATH) ? (() => {
 })() : 'Georgia';
 
 // ── Constants ────────────────────────────────────────────────
-const CANVAS_SIZE   = 1200;
+const CANVAS_SIZE = 1200;
 const AVATAR_RADIUS = 110;
-const BORDER_WIDTH  = 12;
-const CROSS_WIDTH   = 28;
+const BORDER_WIDTH = 12;
+const CROSS_WIDTH = 28;
 
-const TIMEOUT_MS    = 5 * 1000;   // 5 seconds for elimination penalty
+const TIMEOUT_MS = 5 * 1000;   // 5 seconds for elimination penalty
 const TURN_TIMEOUT_MS = 10 * 1000;     // 10 seconds to act, then auto-eliminate
 
 // Role to assign on elimination, remove on win
 const ELIM_ROLE_ID = '1486781924671492266';
 
 // ── Admin ─────────────────────────────────────────────────────
-// BR_ADMIN_ID is always allowed to host, in addition to anyone added
-// via =addp (checked through the shared isAuthorized() helper).
 const BR_ADMIN_ID = '1198980443823947927';
 
 // ── Session store  (channel.id → session) ───────────────────
@@ -49,18 +48,18 @@ const sessions = new Map();
 // ── Lock to prevent duplicate joins ──────────────────────────
 const joiningUsers = new Set();
 
-// ── Avatar-position layouts (same as before) ─────────────────
+// ── Avatar-position layouts ───────────────────────────────────
 const LAYOUTS = {
-    2: [ { x: 0.50, y: 0.25 }, { x: 0.50, y: 0.75 } ],
-    3: [ { x: 0.50, y: 0.18 }, { x: 0.18, y: 0.73 }, { x: 0.82, y: 0.73 } ],
-    4: [ { x: 0.50, y: 0.15 }, { x: 0.85, y: 0.50 }, { x: 0.50, y: 0.85 }, { x: 0.15, y: 0.50 } ],
-    5: [ { x: 0.50, y: 0.12 }, { x: 0.87, y: 0.38 }, { x: 0.75, y: 0.80 }, { x: 0.25, y: 0.80 }, { x: 0.13, y: 0.38 } ],
-    6: (() => { const pts = []; for (let i=0; i<6; i++) { const a = Math.PI/2 + i*2*Math.PI/6; pts.push({x:0.5+0.35*Math.cos(a), y:0.5-0.35*Math.sin(a)}); } return pts; })(),
-    7: (() => { const pts = []; for (let i=0; i<6; i++) { const a = Math.PI/2 + i*2*Math.PI/6; pts.push({x:0.5+0.35*Math.cos(a), y:0.5-0.35*Math.sin(a)}); } pts.push({x:0.5, y:0.5}); return pts; })(),
-    8: (() => { const pts = []; for (let i=0; i<8; i++) { const a = Math.PI/2 + i*2*Math.PI/8; pts.push({x:0.5+0.38*Math.cos(a), y:0.5-0.38*Math.sin(a)}); } return pts; })(),
+    2: [{ x: 0.50, y: 0.25 }, { x: 0.50, y: 0.75 }],
+    3: [{ x: 0.50, y: 0.18 }, { x: 0.18, y: 0.73 }, { x: 0.82, y: 0.73 }],
+    4: [{ x: 0.50, y: 0.15 }, { x: 0.85, y: 0.50 }, { x: 0.50, y: 0.85 }, { x: 0.15, y: 0.50 }],
+    5: [{ x: 0.50, y: 0.12 }, { x: 0.87, y: 0.38 }, { x: 0.75, y: 0.80 }, { x: 0.25, y: 0.80 }, { x: 0.13, y: 0.38 }],
+    6: (() => { const pts = []; for (let i = 0; i < 6; i++) { const a = Math.PI / 2 + i * 2 * Math.PI / 6; pts.push({ x: 0.5 + 0.35 * Math.cos(a), y: 0.5 - 0.35 * Math.sin(a) }); } return pts; })(),
+    7: (() => { const pts = []; for (let i = 0; i < 6; i++) { const a = Math.PI / 2 + i * 2 * Math.PI / 6; pts.push({ x: 0.5 + 0.35 * Math.cos(a), y: 0.5 - 0.35 * Math.sin(a) }); } pts.push({ x: 0.5, y: 0.5 }); return pts; })(),
+    8: (() => { const pts = []; for (let i = 0; i < 8; i++) { const a = Math.PI / 2 + i * 2 * Math.PI / 8; pts.push({ x: 0.5 + 0.38 * Math.cos(a), y: 0.5 - 0.38 * Math.sin(a) }); } return pts; })(),
 };
 
-// ── Slash command definitions (unchanged) ────────────────────
+// ── Slash command definitions ────────────────────────────────
 const banRouletteCommand = new SlashCommandBuilder()
     .setName('br')
     .setDescription('Start a Ban Roulette session in this channel.')
@@ -78,17 +77,16 @@ async function assignElimRole(guild, userId, logChannel = null) {
         if (!member) return false;
         const role = guild.roles.cache.get(ELIM_ROLE_ID);
         if (!role) {
-            if (logChannel) logChannel.send(`⚠️ Elimination role ${ELIM_ROLE_ID} not found.`).catch(()=>{});
+            if (logChannel) logChannel.send(`⚠️ Elimination role ${ELIM_ROLE_ID} not found.`).catch(() => { });
             return false;
         }
-        // Check bot permission and hierarchy
         const botMember = guild.members.me;
         if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-            if (logChannel) logChannel.send(`⚠️ Missing Manage Roles permission.`).catch(()=>{});
+            if (logChannel) logChannel.send(`⚠️ Missing Manage Roles permission.`).catch(() => { });
             return false;
         }
         if (role.comparePositionTo(botMember.roles.highest) >= 0) {
-            if (logChannel) logChannel.send(`⚠️ Elimination role is above my highest role.`).catch(()=>{});
+            if (logChannel) logChannel.send(`⚠️ Elimination role is above my highest role.`).catch(() => { });
             return false;
         }
         await member.roles.add(role, 'Ban Roulette elimination');
@@ -106,7 +104,7 @@ async function removeElimRole(guild, userId, logChannel = null) {
         if (!member) return false;
         const role = guild.roles.cache.get(ELIM_ROLE_ID);
         if (!role) return false;
-        if (!member.roles.cache.has(role.id)) return true; // already not present
+        if (!member.roles.cache.has(role.id)) return true;
         const botMember = guild.members.me;
         if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) return false;
         if (role.comparePositionTo(botMember.roles.highest) >= 0) return false;
@@ -142,13 +140,10 @@ function scheduleTurnTimeout(session, interactionChannel) {
         const expiredPlayer = freshSession.players[freshSession.turnIndex];
         if (!expiredPlayer || expiredPlayer.eliminated) return;
 
-        // Auto‑eliminate the inactive player
         expiredPlayer.eliminated = true;
 
-        // Assign elimination role
         await assignElimRole(interactionChannel.guild, expiredPlayer.userId, interactionChannel);
 
-        // Apply timeout penalty (voice / server mute equivalent)
         let timeoutNote = '';
         try {
             const guild = interactionChannel.guild;
@@ -173,8 +168,9 @@ function scheduleTurnTimeout(session, interactionChannel) {
             await refreshMessage(freshSession, `**TIME OUT!** <@${expiredPlayer.userId}> took too long and was eliminated.${timeoutNote}`);
             const winner = alivePlayers[0];
             if (winner) {
-                // Remove elimination role from winner
                 await removeElimRole(interactionChannel.guild, winner.userId, interactionChannel);
+                // Record BR win
+                if (interactionChannel.guild) Stats.addBrWin(interactionChannel.guild.id, winner.userId);
                 await interactionChannel.send(`<@${winner.userId}> is the last one standing — **you win!**`);
             } else {
                 await interactionChannel.send('Everyone is eliminated. No survivors.');
@@ -183,7 +179,6 @@ function scheduleTurnTimeout(session, interactionChannel) {
             return;
         }
 
-        // Advance to next alive player
         let next = (freshSession.turnIndex + 1) % freshSession.players.length;
         let safety = 0;
         while (freshSession.players[next].eliminated && safety < freshSession.players.length) {
@@ -200,7 +195,7 @@ function scheduleTurnTimeout(session, interactionChannel) {
     }, TURN_TIMEOUT_MS);
 }
 
-// ── Utility: draw canvas (unchanged) ─────────────────────────
+// ── Utility: draw canvas ──────────────────────────────────────
 async function renderCanvas(session) {
     const size = CANVAS_SIZE;
     const canvas = createCanvas(size, size);
@@ -240,8 +235,8 @@ async function renderCanvas(session) {
                 const imgData = tmpCtx.getImageData(0, 0, r * 2, r * 2);
                 const d = imgData.data;
                 for (let p = 0; p < d.length; p += 4) {
-                    const grey = 0.299 * d[p] + 0.587 * d[p+1] + 0.114 * d[p+2];
-                    d[p] = d[p+1] = d[p+2] = grey * 0.65;
+                    const grey = 0.299 * d[p] + 0.587 * d[p + 1] + 0.114 * d[p + 2];
+                    d[p] = d[p + 1] = d[p + 2] = grey * 0.65;
                 }
                 tmpCtx.putImageData(imgData, 0, 0);
                 ctx.drawImage(tmpCanvas, cx - r, cy - r, r * 2, r * 2);
@@ -306,7 +301,7 @@ async function renderCanvas(session) {
     return canvas.toBuffer('image/png');
 }
 
-// ── Fetch avatar (unchanged) ─────────────────────────────────
+// ── Fetch avatar ──────────────────────────────────────────────
 async function fetchAvatar(user) {
     const url = user.displayAvatarURL({ extension: 'png', size: 256 });
     try {
@@ -326,7 +321,7 @@ async function fetchAvatar(user) {
     }
 }
 
-// ── Build action row (unchanged) ──────────────────────────────
+// ── Build action row ──────────────────────────────────────────
 function buildRow(session) {
     if (session.status === 'lobby') {
         return new ActionRowBuilder().addComponents(
@@ -343,7 +338,7 @@ function buildRow(session) {
     );
 }
 
-// ── Edit / send message (unchanged) ──────────────────────────
+// ── Edit / send message ───────────────────────────────────────
 async function refreshMessage(session, content = '') {
     const imageBuffer = await renderCanvas(session);
     const attachment = new AttachmentBuilder(imageBuffer, { name: 'roulette.png' });
@@ -378,6 +373,7 @@ async function handleBrCommand(interaction) {
         message: null,
         turnTimeout: null,
         autoCloseTimeout: null,
+        guildId: interaction.guild?.id ?? null,
     };
     sessions.set(channelId, session);
 
@@ -387,7 +383,6 @@ async function handleBrCommand(interaction) {
     const reply = await interaction.reply({ embeds: [], components: [row], files: [attachment], withResponse: true });
     session.message = reply.resource.message;
 
-    // Auto-close the lobby if nobody joins within 10 seconds.
     session.autoCloseTimeout = setTimeout(async () => {
         const freshSession = sessions.get(channelId);
         if (!freshSession || freshSession.status !== 'lobby') return;
@@ -420,7 +415,7 @@ async function handleBrCancel(interaction) {
     clearTurnTimeout(session);
     if (session.autoCloseTimeout) clearTimeout(session.autoCloseTimeout);
     sessions.delete(channelId);
-    if (session.message) await session.message.delete().catch(() => {});
+    if (session.message) await session.message.delete().catch(() => { });
     await interaction.reply('Ban Roulette session cancelled.');
 }
 
@@ -496,13 +491,11 @@ async function handleTrigger(interaction) {
     }
     await interaction.deferUpdate();
 
-    // Clear the turn timer – player acted in time
     clearTurnTimeout(session);
 
     const bang = Math.random() < (1 / session.chamberSize);
 
     if (!bang) {
-        // Survived: advance turn
         let next = (session.turnIndex + 1) % session.players.length;
         let safety = 0;
         while (session.players[next].eliminated && safety < session.players.length) {
@@ -514,13 +507,10 @@ async function handleTrigger(interaction) {
         await refreshMessage(session, `*Click.* <@${activePlayer.userId}> survived. — <@${nextPlayer.userId}>, you're next.`);
         scheduleTurnTimeout(session, interaction.channel);
     } else {
-        // BANG: eliminate
         activePlayer.eliminated = true;
 
-        // Assign elimination role
         await assignElimRole(interaction.guild, activePlayer.userId, interaction.channel);
 
-        // Apply timeout penalty
         let timeoutNote = '';
         try {
             const member = interaction.member ?? await interaction.guild.members.fetch(activePlayer.userId);
@@ -545,8 +535,9 @@ async function handleTrigger(interaction) {
             await refreshMessage(session, `**BANG!** <@${activePlayer.userId}> has been eliminated.${timeoutNote}`);
             const winner = alivePlayers[0];
             if (winner) {
-                // Remove elimination role from winner
                 await removeElimRole(interaction.guild, winner.userId, interaction.channel);
+                // Record BR win
+                if (session.guildId) Stats.addBrWin(session.guildId, winner.userId);
                 await interaction.channel.send(`<@${winner.userId}> is the last one standing — **you win!**`);
             } else {
                 await interaction.channel.send('Everyone is eliminated. No survivors.');
@@ -555,7 +546,6 @@ async function handleTrigger(interaction) {
             return;
         }
 
-        // Advance to next alive player
         let next = (session.turnIndex + 1) % session.players.length;
         let safety = 0;
         while (session.players[next].eliminated && safety < session.players.length) {
