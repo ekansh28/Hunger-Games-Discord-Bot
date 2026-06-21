@@ -706,21 +706,57 @@ async function handleTreeCommand(message, args) {
 // ─────────────────────────────────────────────────────────────
 //  Custom Virus Commands — =virus create / =virus top
 // ─────────────────────────────────────────────────────────────
+const VIRUS_COLORS = {
+    'red': '#FF0000', 'blue': '#0000FF', 'green': '#00FF00', 'yellow': '#FFFF00',
+    'purple': '#800080', 'orange': '#FFA500', 'pink': '#FFC0CB', 'black': '#000000',
+    'white': '#FFFFFF', 'gray': '#808080', 'grey': '#808080', 'cyan': '#00FFFF',
+    'magenta': '#FF00FF', 'brown': '#A52A2A', 'gold': '#FFD700', 'silver': '#C0C0C0',
+    'navy': '#000080', 'teal': '#008080', 'maroon': '#800000', 'lime': '#00FF00',
+    'olive': '#808000', 'blurple': '#5865F2', 'fuchsia': '#FF00FF'
+};
+
+function resolveVirusColor(input) {
+    if (!input) return null;
+    const lower = input.toLowerCase();
+    if (VIRUS_COLORS[lower]) return VIRUS_COLORS[lower];
+    if (/^#?[0-9a-f]{6}$/i.test(input)) return input.startsWith('#') ? input : '#' + input;
+    return null;
+}
+
+const FORBIDDEN_WORDS = new Set(['admin', 'administrator', 'mod', 'moderator', 'owner', 'staff', 'system', 'discord', 'bot', 'co-owner', 'support', 'dev', 'developer', 'manager', 'everyone', 'here']);
+const SLUR_WORDS = new Set(['nigger', 'nigga', 'faggot', 'fag', 'tranny', 'chink', 'spic', 'kike', 'gook', 'dyke', 'retard']);
+
+function isForbiddenName(name) {
+    if (!name) return false;
+    const words = name.toLowerCase().split(/[^a-z0-9]+/);
+    if (words.some(w => FORBIDDEN_WORDS.has(w))) return 'mod';
+    if (words.some(w => SLUR_WORDS.has(w))) return 'slur';
+    return false;
+}
+
 async function handleVirusCommand(message) {
     const args = message.content.split(/\s+/);
     const cmd = args[1]?.toLowerCase();
     const guild = message.guild;
 
     if (!cmd) {
-        return message.reply('Usage: `=virus create <Name> <HexColor>` or `=virus top` or `=virus rename/color/icon`');
+        return message.reply('Usage: `=virus create <Name> <Color>` or `=virus top` or `=virus rename/color/icon`');
     }
 
     if (cmd === 'create') {
         const name = args.slice(2, -1).join(' ');
-        const colorInput = args[args.length - 1];
+        const rawColor = args[args.length - 1];
+        const colorInput = resolveVirusColor(rawColor);
 
-        if (!name || !/^#[0-9A-Fa-f]{6}$/i.test(colorInput)) {
-            return message.reply('Usage: `=virus create <Name> <#HexColor>`\nExample: `=virus create T-Virus #ff0000`');
+        if (!name || !colorInput) {
+            return message.reply('Usage: `=virus create <Name> <Color>`\nExample: `=virus create T-Virus red` or `=virus create T-Virus #ff0000`');
+        }
+
+        const forbiddenType = isForbiddenName(name);
+        if (forbiddenType === 'mod') {
+            return message.reply('❌ You cannot use moderation, staff, or system names for your virus.');
+        } else if (forbiddenType === 'slur') {
+            return message.reply('❌ You cannot use racial or homophobic slurs for your virus.');
         }
 
         if (isInfected(guild.id, message.author.id)) {
@@ -766,10 +802,10 @@ async function handleVirusCommand(message) {
             await markInfected(guild.id, message.author.id, newRole.id, null);
             await message.member.roles.add(newRole, 'Patient Zero');
 
-            return message.reply(`🦠 You have engineered and unleashed the **${name}** virus! Spread it by pinging others or replying to them.`);
+            return message.channel.send(`<@${message.author.id}> 🦠 You have engineered and unleashed the **${name}** virus! Spread it by pinging others or replying to them.`);
         } catch (err) {
             console.error('[AIDS] create virus error:', err);
-            return message.reply('Failed to create the virus role. Please check my permissions or position.');
+            return message.channel.send(`<@${message.author.id}> Failed to create the virus role. Please check my permissions or position.`);
         }
     }
 
@@ -816,15 +852,22 @@ async function handleVirusCommand(message) {
         const newName = args.slice(2).join(' ');
         if (!newName) return message.reply('Usage: `=virus rename <NewName>`');
 
+        const forbiddenType = isForbiddenName(newName);
+        if (forbiddenType === 'mod') {
+            return message.reply('❌ You cannot use moderation, staff, or system names for your virus.');
+        } else if (forbiddenType === 'slur') {
+            return message.reply('❌ You cannot use racial or homophobic slurs for your virus.');
+        }
+
         try {
             await myRole.setName(newName, `Virus renamed by ${message.author.username}`);
             viruses[guild.id][myVirusId].name = newName;
             await pool.query('UPDATE custom_viruses SET name = $1 WHERE role_id = $2', [newName, myVirusId])
                 .catch(e => console.error('[AIDS] DB Error rename virus:', e));
-            return message.reply(`Your virus has been renamed to **${newName}**!`);
+            return message.channel.send(`<@${message.author.id}> Your virus has been renamed to **${newName}**!`);
         } catch (err) {
             console.error(err);
-            return message.reply('Failed to rename the role. Please check my permissions.');
+            return message.channel.send(`<@${message.author.id}> Failed to rename the role. Please check my permissions.`);
         }
     }
 
@@ -833,9 +876,10 @@ async function handleVirusCommand(message) {
         const myRole = guild.roles.cache.get(myVirusId);
         if (!myRole) return message.reply('Your virus role is missing.');
 
-        const newColor = args[2];
-        if (!newColor || !/^#[0-9A-Fa-f]{6}$/i.test(newColor)) {
-            return message.reply('Usage: `=virus color <#HexColor>`\nExample: `=virus color #ff0000`');
+        const rawColor = args[2];
+        const newColor = resolveVirusColor(rawColor);
+        if (!newColor) {
+            return message.reply('Usage: `=virus color <Color>`\nExample: `=virus color blue` or `=virus color #0000ff`');
         }
 
         try {
@@ -843,10 +887,10 @@ async function handleVirusCommand(message) {
             viruses[guild.id][myVirusId].color = newColor;
             await pool.query('UPDATE custom_viruses SET color = $1 WHERE role_id = $2', [newColor, myVirusId])
                 .catch(e => console.error('[AIDS] DB Error color virus:', e));
-            return message.reply(`Your virus color has been updated!`);
+            return message.channel.send(`<@${message.author.id}> Your virus color has been updated!`);
         } catch (err) {
             console.error(err);
-            return message.reply('Failed to change the role color. Please check my permissions.');
+            return message.channel.send(`<@${message.author.id}> Failed to change the role color. Please check my permissions.`);
         }
     }
 
@@ -860,7 +904,7 @@ async function handleVirusCommand(message) {
             if (message.attachments.size > 0) {
                 const attachmentUrl = message.attachments.first().url;
                 await myRole.setIcon(attachmentUrl, `Virus icon changed by ${message.author.username}`);
-                return message.reply('Your virus icon has been updated from the image you attached!');
+                return message.channel.send(`<@${message.author.id}> Your virus icon has been updated from the image you attached!`);
             } else {
                 // Try to set it as a unicode emoji
                 const emoji = args[2];
@@ -868,11 +912,11 @@ async function handleVirusCommand(message) {
                     return message.reply('Usage: `=virus icon <Emoji>` OR attach an image file with the command `=virus icon`.');
                 }
                 await myRole.edit({ unicodeEmoji: emoji }, `Virus icon changed by ${message.author.username}`);
-                return message.reply(`Your virus icon has been updated to ${emoji}!`);
+                return message.channel.send(`<@${message.author.id}> Your virus icon has been updated to ${emoji}!`);
             }
         } catch (err) {
             console.error(err);
-            return message.reply('Failed to change the role icon. Please note that changing role icons requires the server to have enough Boosts (Level 2), and Discord might reject certain emojis.');
+            return message.channel.send(`<@${message.author.id}> Failed to change the role icon. Please note that changing role icons requires the server to have enough Boosts (Level 2), and Discord might reject certain emojis.`);
         }
     }
 }
@@ -883,14 +927,12 @@ async function handleVirusCommand(message) {
 async function handleMessage(message) {
     if (message.author.bot || !message.guild) return;
 
-    // ── .bump — no longer grants immunity (role-based instead) ──
-    // However, it cures the person if they are infected
+    // ── .bump — Cures the person if they are infected ──
     if (message.content.trim().toLowerCase() === '.bump') {
-        const bumpImmuneRole = message.guild.roles.cache.get(BUMP_IMMUNE_ROLE_ID);
-        if (bumpImmuneRole && message.member.roles.cache.has(BUMP_IMMUNE_ROLE_ID)) {
-            // Check if they are infected, if yes, cure them
-            if (isInfected(message.guild.id, message.author.id)) {
-                await removeInfection(message.member);
+        if (isInfected(message.guild.id, message.author.id)) {
+            const result = await removeInfection(message.member);
+            if (result) {
+                await message.channel.send(`💊 ${message.member} has bumped the server and cured their infection!`);
             }
         }
         return;
