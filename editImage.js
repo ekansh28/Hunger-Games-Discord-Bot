@@ -46,11 +46,27 @@ async function handleEditCommand(message) {
 
         // 1. Download image from Discord and force conversion to a flat PNG
         // This ensures GIFs are converted to their first static frame
+        // Also resizes the image to a maximum of 512px on the longest side to speed up generation
         const { createCanvas, loadImage } = require('canvas');
         const img = await loadImage(imageUrl);
-        const canvas = createCanvas(img.width, img.height);
+        
+        let width = img.width;
+        let height = img.height;
+        const MAX_SIZE = 512;
+        
+        if (width > MAX_SIZE || height > MAX_SIZE) {
+            if (width > height) {
+                height = Math.round((height * MAX_SIZE) / width);
+                width = MAX_SIZE;
+            } else {
+                width = Math.round((width * MAX_SIZE) / height);
+                height = MAX_SIZE;
+            }
+        }
+
+        const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0, width, height);
         
         const pngBuffer = canvas.toBuffer('image/png');
         const imgBlob = new Blob([pngBuffer], { type: 'image/png' });
@@ -84,44 +100,77 @@ async function handleEditCommand(message) {
         // Randomize seed to avoid identical results
         workflow["24:21"].inputs.seed = Math.floor(Math.random() * 1000000000);
 
-        // 4. Submit workflow to ComfyUI
-        const promptRes = await fetch(`${COMFY_URL}/prompt`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: workflow })
-        });
-        const promptData = await promptRes.json();
-        const promptId = promptData.prompt_id;
+        // 4. Establish WebSocket connection and wait for execution
+        const WebSocket = require('ws');
+        const clientId = crypto.randomUUID();
+        const wsUrl = COMFY_URL.replace("http", "ws").replace("https", "wss") + `/ws?clientId=${clientId}`;
         
-        if (!promptId) {
-            throw new Error("Failed to queue ComfyUI workflow");
-        }
-
-        // 5. Poll history for completion
-        let outputImageName = null;
-        for (let i = 0; i < 120; i++) { // Poll for up to 120 seconds to be absolutely safe
-            await new Promise(r => setTimeout(r, 1000));
-            const historyRes = await fetch(`${COMFY_URL}/history/${promptId}`);
-            const historyData = await historyRes.json();
+        const outputImageName = await new Promise((resolve, reject) => {
+            const ws = new WebSocket(wsUrl);
+            let promptId = null;
             
-            if (historyData[promptId]) {
-                const outputs = historyData[promptId].outputs;
-                // Dynamically scan for ANY node that produced an image output
-                if (outputs) {
-                    for (const nodeId in outputs) {
-                        if (outputs[nodeId].images && outputs[nodeId].images.length > 0) {
-                            outputImageName = outputs[nodeId].images[0].filename;
-                            break;
+            const timeout = setTimeout(() => {
+                ws.close();
+                reject(new Error("ComfyUI generation timed out"));
+            }, 120000); // 120 seconds timeout
+
+            ws.on('open', async () => {
+                try {
+                    // Submit workflow to ComfyUI once WS is open
+                    const promptRes = await fetch(`${COMFY_URL}/prompt`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ prompt: workflow, client_id: clientId })
+                    });
+                    const promptData = await promptRes.json();
+                    promptId = promptData.prompt_id;
+                    
+                    if (!promptId) {
+                        throw new Error("Failed to queue ComfyUI workflow");
+                    }
+                } catch (err) {
+                    clearTimeout(timeout);
+                    ws.close();
+                    reject(err);
+                }
+            });
+
+            ws.on('message', (data) => {
+                const strData = data.toString();
+                // Ignore binary messages (like image previews)
+                if (!strData.startsWith('{')) return;
+                
+                let msg;
+                try { msg = JSON.parse(strData); } catch(e) { return; }
+                
+                if (msg.type === 'executed' && promptId && msg.data.prompt_id === promptId) {
+                    clearTimeout(timeout);
+                    ws.close();
+                    
+                    const outputs = msg.data.output;
+                    let outName = null;
+                    if (outputs) {
+                        for (const nodeId in outputs) {
+                            if (outputs[nodeId].images && outputs[nodeId].images.length > 0) {
+                                outName = outputs[nodeId].images[0].filename;
+                                break;
+                            }
                         }
                     }
+                    if (outName) resolve(outName);
+                    else reject(new Error("No output image found in execution result"));
+                } else if (msg.type === 'execution_error') {
+                    clearTimeout(timeout);
+                    ws.close();
+                    reject(new Error("ComfyUI execution error: " + (msg.data.exception_message || "Unknown error")));
                 }
-                if (outputImageName) break;
-            }
-        }
-        
-        if (!outputImageName) {
-            throw new Error("ComfyUI generation timed out or failed");
-        }
+            });
+
+            ws.on('error', (err) => {
+                clearTimeout(timeout);
+                reject(err);
+            });
+        });
 
         // 6. Fetch resulting image
         const finalImgRes = await fetch(`${COMFY_URL}/view?filename=${outputImageName}&type=output`);

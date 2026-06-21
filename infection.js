@@ -906,17 +906,33 @@ async function handleVirusCommand(message) {
                 await myRole.setIcon(attachmentUrl, `Virus icon changed by ${message.author.username}`);
                 return message.channel.send(`<@${message.author.id}> Your virus icon has been updated from the image you attached!`);
             } else {
-                // Try to set it as a unicode emoji
-                const emoji = args[2];
-                if (!emoji) {
-                    return message.channel.send('<@' + message.author.id + '> Usage: `=virus icon <Emoji>` OR attach an image file with the command `=virus icon`.');
+                const input = args[2];
+                if (!input) {
+                    return message.channel.send('<@' + message.author.id + '> Usage: `=virus icon <Emoji/URL>` OR attach an image file with the command `=virus icon`.');
                 }
-                await myRole.edit({ unicodeEmoji: emoji }, `Virus icon changed by ${message.author.username}`);
-                return message.channel.send(`<@${message.author.id}> Your virus icon has been updated to ${emoji}!`);
+                
+                // Check if it's a custom emoji <a:name:id> or <:name:id>
+                const customEmojiMatch = input.match(/<?(?:a)?:?(\w{2,32}):(\d{17,19})>?/);
+                if (customEmojiMatch) {
+                    const emojiId = customEmojiMatch[2];
+                    const iconUrl = `https://cdn.discordapp.com/emojis/${emojiId}.png`;
+                    await myRole.setIcon(iconUrl, `Virus icon changed by ${message.author.username}`);
+                    return message.channel.send(`<@${message.author.id}> Your virus icon has been updated to the custom emoji!`);
+                }
+                
+                // Check if it's a direct URL
+                if (input.startsWith('http://') || input.startsWith('https://')) {
+                    await myRole.setIcon(input, `Virus icon changed by ${message.author.username}`);
+                    return message.channel.send(`<@${message.author.id}> Your virus icon has been updated from the provided URL!`);
+                }
+
+                // Try to set it as a unicode emoji
+                await myRole.edit({ unicodeEmoji: input, icon: null }, `Virus icon changed by ${message.author.username}`);
+                return message.channel.send(`<@${message.author.id}> Your virus icon has been updated to ${input}!`);
             }
         } catch (err) {
             console.error(err);
-            return message.channel.send(`<@${message.author.id}> Failed to change the role icon. Please note that changing role icons requires the server to have enough Boosts (Level 2), and Discord might reject certain emojis.`);
+            return message.channel.send(`<@${message.author.id}> Failed to change the role icon. Discord API Error: ${err.message || 'Unknown Error'}. Note: Custom discord emojis are now supported natively, but if using a raw URL make sure it points directly to an image file.`);
         }
     }
 }
