@@ -65,7 +65,8 @@ async function handleEditCommand(message) {
 
     } catch (err) {
         console.error('[GradioEdit] Error editing image:', err);
-        return message.channel.send(`<@${message.author.id}> ❌ Failed to edit the image. Error: ${err.message}`);
+        const errMsg = err.message || (err.title ? err.title : JSON.stringify(err));
+        return message.channel.send(`<@${message.author.id}> ❌ Failed to edit the image. Error: ${errMsg}`);
     }
 }
 
