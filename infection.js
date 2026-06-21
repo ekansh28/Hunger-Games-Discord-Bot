@@ -693,6 +693,7 @@ async function handleMessage(message) {
             }
             
             if (role) {
+                await message.guild.members.fetch(); // Ensure all members are cached!
                 const membersWithRole = role.members.values();
                 for (const member of membersWithRole) {
                     await member.roles.remove(role, 'Cured of AIDS (=cure all)');
