@@ -66,6 +66,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMessageReactions,
     ]
 });
 
@@ -444,14 +445,12 @@ client.on('messageCreate', async (message) => {
         };
 
         if (!isAuthorized(message.member || message.author)) {
-            const voteMsg = await message.reply('You are not authorized to start a game! However, if this message gets 4 ✅ reactions, you will be allowed to host it.');
-            await voteMsg.react('✅');
+            await message.react('✅');
             
             const filter = (reaction) => reaction.emoji.name === '✅';
-            const collector = voteMsg.createReactionCollector({ filter, time: 300000 }); // 5 minutes
+            const collector = message.createReactionCollector({ filter, time: 300000 }); // 5 minutes
 
             collector.on('collect', async (reaction) => {
-                // reaction.count includes the bot's reaction, so 4 means 3 users + 1 bot, or just 4 reacts total
                 if (reaction.count >= 4) {
                     collector.stop('passed');
                     if (gameStates.has(message.channel.id)) {
@@ -462,11 +461,6 @@ client.on('messageCreate', async (message) => {
                 }
             });
 
-            collector.on('end', (collected, reason) => {
-                if (reason !== 'passed') {
-                    voteMsg.edit('Voting failed. Not enough ✅ reactions in time.').catch(() => null);
-                }
-            });
             return;
         }
 
