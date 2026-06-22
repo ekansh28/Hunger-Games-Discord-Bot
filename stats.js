@@ -58,6 +58,12 @@ async function initDB() {
         await pool.query(`
             ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS gg_wins INTEGER DEFAULT 0;
         `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS ai_user_memory (
+                user_id VARCHAR(32) PRIMARY KEY,
+                history JSONB DEFAULT '[]'::jsonb
+            );
+        `);
         dbInitialized = true;
         console.log('[Stats] Neon PostgreSQL initialized.');
     } catch (err) {

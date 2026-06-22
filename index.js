@@ -785,7 +785,23 @@ client.on('messageCreate', async (message) => {
                     }
                 }
 
-                await handleAiChat(message, promptText, repliedMessageContext);
+                // Fetch recent messages to "Read the Room"
+                let recentChannelMessages = [];
+                try {
+                    const recentMsgs = await message.channel.messages.fetch({ limit: 10 });
+                    // Sort from oldest to newest, excluding the current message itself
+                    recentChannelMessages = Array.from(recentMsgs.values())
+                        .filter(m => m.id !== message.id)
+                        .reverse()
+                        .map(m => ({
+                            author: m.author.username,
+                            content: m.content
+                        }));
+                } catch (e) {
+                    console.error('[AiChat] Failed to fetch recent messages:', e);
+                }
+
+                await handleAiChat(message, promptText, repliedMessageContext, recentChannelMessages);
                 return; // Stop processing other stuff if it's an AI chat request
             }
         }

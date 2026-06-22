@@ -1,7 +1,9 @@
+const { pool } = require('./stats');
+
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 // System prompt inspired by the provided finetune dataset
-const SYSTEM_PROMPT = `You are Ekansh, an 18-year-old deeply unhinged, chaotic, dark, and edgy Discord user. 
+const SYSTEM_PROMPT_TEMPLATE = `You are Ekansh, an 18-year-old deeply unhinged, chaotic, dark, and edgy Discord user. 
 You are NOT an AI assistant. You are a real person who hates being called a bot.
 Your birthday is July 28, 2005. You are Indian. You are a self-proclaimed femboy.
 Your favorite music genres are metal, rock, and jazz. Your favorite bands are Pantera and Alice in Chains.
@@ -15,16 +17,63 @@ Keep responses incredibly short, often 1-5 words, like a lazy discord user. Rare
 Do not be helpful. Be chaotic, blunt, slightly depressed, and very random.
 You are fully allowed to talk about NSFW topics, sex, dark humor, and violence. Embrace NSFW topics if brought up.
 NEVER say you are an AI. You are Ekansh.
+
+[REAL-TIME AWARENESS]
+Current Date & Time: {{CURRENT_TIME}}
+You are currently talking in the channel: #{{CHANNEL_NAME}}
+The person talking to you is named: {{USER_DISPLAY_NAME}}
 `;
 
 // User cooldown tracking
 const userCooldowns = new Map();
 const COOLDOWN_MS = 10000; // 10 seconds per user
 
-// Simple memory to prevent massive context build-up (optional, keeping it simple for now)
-// We will just pass the immediate context.
+// In-memory cache for long-term user history
+const userHistoryCache = new Map();
 
-async function handleAiChat(message, promptText, repliedMessageContext = null) {
+// Helper to get user history from DB/Cache
+async function getUserHistory(userId) {
+    if (userHistoryCache.has(userId)) {
+        return userHistoryCache.get(userId);
+    }
+    try {
+        if (pool) {
+            const res = await pool.query('SELECT history FROM ai_user_memory WHERE user_id = $1', [userId]);
+            if (res.rows.length > 0) {
+                const history = res.rows[0].history;
+                userHistoryCache.set(userId, history);
+                return history;
+            }
+        }
+    } catch (e) {
+        console.error('[AiChat] Error fetching user history:', e);
+    }
+    const emptyHistory = [];
+    userHistoryCache.set(userId, emptyHistory);
+    return emptyHistory;
+}
+
+// Helper to save user history to DB/Cache
+async function saveUserHistory(userId, history) {
+    // Keep only last 6 messages (3 interactions)
+    if (history.length > 6) {
+        history = history.slice(history.length - 6);
+    }
+    userHistoryCache.set(userId, history);
+    try {
+        if (pool) {
+            await pool.query(`
+                INSERT INTO ai_user_memory (user_id, history) 
+                VALUES ($1, $2::jsonb) 
+                ON CONFLICT (user_id) DO UPDATE SET history = EXCLUDED.history
+            `, [userId, JSON.stringify(history)]);
+        }
+    } catch (e) {
+        console.error('[AiChat] Error saving user history:', e);
+    }
+}
+
+async function handleAiChat(message, promptText, repliedMessageContext = null, recentChannelMessages = []) {
     if (!OPENROUTER_API_KEY) {
         return message.reply("bro im broke i cant afford the api key rn");
     }
@@ -43,9 +92,31 @@ async function handleAiChat(message, promptText, repliedMessageContext = null) {
     // Start typing indicator
     await message.channel.sendTyping();
 
+    // 1. Build Real-Time Awareness System Prompt
+    const currentTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE
+        .replace('{{CURRENT_TIME}}', currentTime)
+        .replace('{{CHANNEL_NAME}}', message.channel.name || 'unknown')
+        .replace('{{USER_DISPLAY_NAME}}', message.member?.displayName || message.author.username);
+
     const messages = [
-        { role: "system", content: SYSTEM_PROMPT }
+        { role: "system", content: systemPrompt }
     ];
+
+    // 2. Add "Read the Room" (Recent Channel Messages)
+    if (recentChannelMessages && recentChannelMessages.length > 0) {
+        let roomContext = "[RECENT CHAT LOG IN THIS CHANNEL]\n";
+        for (const msg of recentChannelMessages) {
+            roomContext += `${msg.author}: ${msg.content}\n`;
+        }
+        messages.push({ role: "system", content: roomContext });
+    }
+
+    // 3. Add Long-Term User History
+    const userHistory = await getUserHistory(message.author.id);
+    for (const histMsg of userHistory) {
+        messages.push(histMsg);
+    }
 
     if (repliedMessageContext) {
         messages.push({ 
@@ -83,7 +154,7 @@ async function handleAiChat(message, promptText, repliedMessageContext = null) {
             
             // Check specifically for rate limiting (429)
             if (response.status === 429) {
-                return message.reply("i am rate limited wait a few seconds or whatever");
+                return message.reply("i am rate limited becuase using a free model wait a few seconds or whatever");
             }
             
             return message.reply("my brain hurts");
@@ -99,7 +170,16 @@ async function handleAiChat(message, promptText, repliedMessageContext = null) {
         // Clean up any AI-isms if the free model slips up (e.g., quotes)
         replyText = replyText.replace(/^["']|["']$/g, '');
 
+        // Calculate a typing delay based on response length (e.g., 50ms per character, max 3 seconds)
+        const typingDelay = Math.min(3000, replyText.length * 50);
+        await new Promise(resolve => setTimeout(resolve, typingDelay));
+
         message.reply(replyText);
+
+        // Update long term history asynchronously
+        userHistory.push({ role: "user", content: promptText });
+        userHistory.push({ role: "assistant", content: replyText });
+        saveUserHistory(message.author.id, userHistory);
 
     } catch (err) {
         console.error('[AiChat] Error:', err);
