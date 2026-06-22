@@ -77,115 +77,55 @@ async function handleEditCommand(message) {
         ctx.drawImage(img, 0, 0, width, height);
         
         const pngBuffer = canvas.toBuffer('image/png');
-        const imgBlob = new Blob([pngBuffer], { type: 'image/png' });
+        const base64Image = pngBuffer.toString('base64');
+        const b64DataUri = `data:image/png;base64,${base64Image}`;
         
-        // 2. Upload to ComfyUI Server
-        const formData = new FormData();
-        const uploadFilename = `discord_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.png`;
-        formData.append("image", imgBlob, uploadFilename);
-        
-        const uploadRes = await fetch(`${COMFY_URL}/upload/image`, {
-            method: "POST",
-            body: formData
-        });
-        const uploadData = await uploadRes.json();
-        
-        if (!uploadData.name) {
-            throw new Error("Failed to upload image to ComfyUI");
+        // 2. Prepare payload for BytePlus ARK API
+        const arkApiKey = process.env.ARK_API_KEY;
+        if (!arkApiKey) {
+            throw new Error("ARK_API_KEY is not set in environment variables.");
         }
 
-        // 3. Load workflow
-        const workflowPath = path.join(__dirname, 'workflow_api2.json');
-        const workflowRaw = fs.readFileSync(workflowPath, 'utf8');
-        const workflow = JSON.parse(workflowRaw);
+        const modelId = process.env.ARK_MODEL_ID || 'seededit-3.0-i2i';
         
-        // Inject the user's prompt into the positive text node (TextEncodeQwenImageEditPlus)
-        workflow["24:19"].inputs.prompt = prompt;
-        
-        // Set the uploaded image filename
-        workflow["10"].inputs.image = uploadData.name;
-        
-        // Randomize seed to avoid identical results
-        workflow["24:21"].inputs.seed = Math.floor(Math.random() * 1000000000);
+        const payload = {
+            model: modelId,
+            prompt: prompt,
+            image: [ b64DataUri ],
+            response_format: "b64_json",
+            watermark: false
+        };
 
-        // 4. Establish WebSocket connection and wait for execution
-        const WebSocket = require('ws');
-        const clientId = crypto.randomUUID();
-        const wsUrl = COMFY_URL.replace("http", "ws").replace("https", "wss") + `/ws?clientId=${clientId}`;
-        
-        const outputImageName = await new Promise((resolve, reject) => {
-            const ws = new WebSocket(wsUrl);
-            let promptId = null;
-            
-            const timeout = setTimeout(() => {
-                ws.close();
-                reject(new Error("ComfyUI generation timed out"));
-            }, 120000); // 120 seconds timeout
+        // Inform the user that generation has started
+        message.channel.send(`<@${message.author.id}> ⏳ The job is queued with BytePlus ARK API and generation has started...`).catch(() => {});
 
-            ws.on('open', async () => {
-                try {
-                    // Submit workflow to ComfyUI once WS is open
-                    const promptRes = await fetch(`${COMFY_URL}/prompt`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ prompt: workflow, client_id: clientId })
-                    });
-                    const promptData = await promptRes.json();
-                    promptId = promptData.prompt_id;
-                    
-                    if (!promptId) {
-                        throw new Error("Failed to queue ComfyUI workflow");
-                    }
-                    
-                    // Inform the user that generation has started
-                    message.channel.send(`<@${message.author.id}>  The job is queued and generation has started...`).catch(() => {});
-                } catch (err) {
-                    clearTimeout(timeout);
-                    ws.close();
-                    reject(err);
-                }
-            });
-
-            ws.on('message', (data) => {
-                const strData = data.toString();
-                // Ignore binary messages (like image previews)
-                if (!strData.startsWith('{')) return;
-                
-                let msg;
-                try { msg = JSON.parse(strData); } catch(e) { return; }
-                
-                if (msg.type === 'executed' && promptId && msg.data.prompt_id === promptId) {
-                    clearTimeout(timeout);
-                    ws.close();
-                    
-                    const outputs = msg.data.output;
-                    let outName = null;
-                    if (outputs && outputs.images && outputs.images.length > 0) {
-                        outName = outputs.images[0].filename;
-                    }
-                    
-                    if (outName) resolve(outName);
-                    else reject(new Error("No output image found in execution result"));
-                } else if (msg.type === 'execution_error') {
-                    clearTimeout(timeout);
-                    ws.close();
-                    reject(new Error("ComfyUI execution error: " + (msg.data.exception_message || "Unknown error")));
-                }
-            });
-
-            ws.on('error', (err) => {
-                clearTimeout(timeout);
-                reject(err);
-            });
+        // 3. Send request to BytePlus
+        const arkRes = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${arkApiKey}`
+            },
+            body: JSON.stringify(payload)
         });
 
-        // 6. Fetch resulting image
-        const finalImgRes = await fetch(`${COMFY_URL}/view?filename=${outputImageName}&type=output`);
-        const finalImgArrayBuffer = await finalImgRes.arrayBuffer();
-        const rawFinalImgBuffer = Buffer.from(finalImgArrayBuffer);
+        const arkData = await arkRes.json();
 
-        // 7. Resize final image to 512px max before sending to Discord
-        const finalImg = await loadImage(rawFinalImgBuffer);
+        if (!arkRes.ok) {
+            console.error('[ARK API] Error response:', arkData);
+            throw new Error(arkData.error?.message || arkData.error?.code || JSON.stringify(arkData));
+        }
+
+        if (!arkData.data || !arkData.data[0] || !arkData.data[0].b64_json) {
+            console.error('[ARK API] Invalid response structure:', arkData);
+            throw new Error("No output image returned from the API.");
+        }
+
+        // 4. Decode base64 back to buffer
+        const finalImgBuffer = Buffer.from(arkData.data[0].b64_json, 'base64');
+
+        // 5. Resize final image to 512px max before sending to Discord (optional, but good for saving bandwidth)
+        const finalImg = await loadImage(finalImgBuffer);
         let finalWidth = finalImg.width;
         let finalHeight = finalImg.height;
         
@@ -213,9 +153,9 @@ async function handleEditCommand(message) {
         });
 
     } catch (err) {
-        console.error('[ComfyUIEdit] Error editing image:', err);
+        console.error('[BytePlusEdit] Error editing image:', err);
         const errMsg = err.message || (err.title ? err.title : JSON.stringify(err));
-        return message.channel.send(`<@${message.author.id}> ❌ Failed to edit the image via ComfyUI. Error: ${errMsg}`);
+        return message.channel.send(`<@${message.author.id}> ❌ Failed to edit the image via BytePlus API. Error: ${errMsg}`);
     }
 }
 
