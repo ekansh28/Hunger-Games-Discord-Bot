@@ -10,7 +10,8 @@ const Infection = require('./infection');
 const Stats = require('./stats');
 const LastFm = require('./utils/lastfm');
 const path = require('path');
-const { handleGeoGuesser, populateCache } = require('./geoguesser');
+const { handleGeoGuesser, handleGgLeaderboard, populateCache } = require('./geoguesser');
+const { handleAiChat } = require('./aiChat');
 
 const HG_ELIM_ROLE_ID = '1486781924671492266';
 
@@ -120,6 +121,7 @@ function buildStatsEmbed(targetUser, targetMember, stats) {
             { name: 'Hunger Games Wins', value: stats.hgWins.toLocaleString(), inline: true },
             { name: 'Ban Roulette Wins', value: stats.brWins.toLocaleString(), inline: true },
             { name: 'People Infected', value: stats.infectionsSpread.toLocaleString(), inline: true },
+            { name: 'GeoGuesser Wins', value: (stats.ggWins || 0).toLocaleString(), inline: true },
         )
         .setTimestamp();
 
@@ -348,6 +350,12 @@ client.on('messageCreate', async (message) => {
     // ── =gg ───────────────────────────────────────────────────────────────────
     if (contentLower === '=gg' || contentLower === '=geoguesser') {
         await handleGeoGuesser(message);
+        return;
+    }
+
+    // ── =ggleaderboard ────────────────────────────────────────────────────────
+    if (contentLower === '=ggleaderboard' || contentLower === '=gglb') {
+        await handleGgLeaderboard(message);
         return;
     }
 
@@ -735,6 +743,49 @@ client.on('messageCreate', async (message) => {
             }, 6000);
         }
         return;
+    }
+
+    // ── AI Chat (Ekansh Persona) ──────────────────────────────────────────────
+    if (message.guild && !message.author.bot) {
+        const botMention = `<@${client.user.id}>`;
+        const botMentionOld = `<@!${client.user.id}>`;
+        
+        const isMentioned = message.content.includes(botMention) || message.content.includes(botMentionOld);
+        const startsWithEkansh = contentLower.startsWith('ekansh');
+
+        if (isMentioned || startsWithEkansh) {
+            // Strip the mention/prefix for the prompt
+            let promptText = message.content
+                .replace(new RegExp(`${botMention}\\s*`), '')
+                .replace(new RegExp(`${botMentionOld}\\s*`), '');
+            
+            if (startsWithEkansh) {
+                // Remove the word 'ekansh' from the start, case insensitive
+                promptText = promptText.replace(/^ekansh\s*/i, '');
+            }
+            
+            promptText = promptText.trim();
+
+            if (promptText.length > 0) {
+                let repliedMessageContext = null;
+                if (message.reference && message.reference.messageId) {
+                    try {
+                        const repliedMsg = await message.channel.messages.fetch(message.reference.messageId);
+                        if (repliedMsg) {
+                            repliedMessageContext = {
+                                author: repliedMsg.author.username,
+                                content: repliedMsg.content
+                            };
+                        }
+                    } catch (e) {
+                        console.error('[AiChat] Failed to fetch referenced message:', e);
+                    }
+                }
+
+                await handleAiChat(message, promptText, repliedMessageContext);
+                return; // Stop processing other stuff if it's an AI chat request
+            }
+        }
     }
 });
 

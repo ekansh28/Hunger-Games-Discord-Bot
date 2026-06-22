@@ -1,6 +1,7 @@
 const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const https = require('https');
 const cities = require('./cities.json');
+const Stats = require('./stats');
 const GOOGLE_API_KEY = process.env.GOOGLE_STREETVIEW_API_KEY || 'AIzaSyBtRz5rZio6uqq2UEHT2l-HL-6JEq7r3Bg';
 const MAPILLARY_TOKEN = process.env.MAPILLARY_TOKEN;
 let googleDenied = false; // set to true after first REQUEST_DENIED, use Mapillary going forward
@@ -181,6 +182,9 @@ async function handleGeoGuesser(message) {
         if (normalizedGuess === targetCountry) {
             collector.stop('winner');
             activeGames.delete(channelId);
+
+            // Track the win in the database
+            if (m.guild) Stats.addGgWin(m.guild.id, m.author.id);
             
             const winEmbed = new EmbedBuilder()
                 .setTitle('Winner')
@@ -212,7 +216,26 @@ async function handleGeoGuesser(message) {
     });
 }
 
+async function handleGgLeaderboard(message) {
+    const lb = await Stats.getGgLeaderboard(message.guild?.id, 10);
+    const embed = new EmbedBuilder()
+        .setTitle('🌍 GeoGuesser Leaderboard')
+        .setColor('#0099ff')
+        .setTimestamp();
+    if (lb.length === 0) {
+        embed.setDescription('No GeoGuesser wins recorded yet. Play with `=gg`!');
+    } else {
+        const desc = lb.map((entry, idx) => {
+            const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `**${idx + 1}.**`;
+            return `${medal} <@${entry.userId}> — **${entry.count}** win${entry.count === 1 ? '' : 's'}`;
+        }).join('\n');
+        embed.setDescription(desc);
+    }
+    return message.reply({ embeds: [embed] });
+}
+
 module.exports = {
     handleGeoGuesser,
-    populateCache // export to initialize on bot startup
+    handleGgLeaderboard,
+    populateCache
 };

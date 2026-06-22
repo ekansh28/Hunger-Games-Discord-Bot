@@ -55,6 +55,9 @@ async function initDB() {
         await pool.query(`
             ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS boob_size INTEGER;
         `);
+        await pool.query(`
+            ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS gg_wins INTEGER DEFAULT 0;
+        `);
         dbInitialized = true;
         console.log('[Stats] Neon PostgreSQL initialized.');
     } catch (err) {
@@ -90,7 +93,7 @@ const DUPLICATE_MS = 30000; // 30 seconds
 function getPendingUser(guildId, userId) {
     const key = `${guildId}:${userId}`;
     if (!pendingUserStats.has(key)) {
-        pendingUserStats.set(key, { hgWins: 0, brWins: 0, infectionsSpread: 0 });
+        pendingUserStats.set(key, { hgWins: 0, brWins: 0, infectionsSpread: 0, ggWins: 0 });
     }
     return pendingUserStats.get(key);
 }
@@ -189,14 +192,15 @@ async function flushStats() {
         for (const [key, data] of userEntries) {
             const [guildId, userId] = key.split(':');
             await client.query(`
-                INSERT INTO user_stats (guild_id, user_id, hg_wins, br_wins, infections_spread)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO user_stats (guild_id, user_id, hg_wins, br_wins, infections_spread, gg_wins)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 ON CONFLICT (guild_id, user_id)
                 DO UPDATE SET 
                     hg_wins = user_stats.hg_wins + EXCLUDED.hg_wins,
                     br_wins = user_stats.br_wins + EXCLUDED.br_wins,
-                    infections_spread = user_stats.infections_spread + EXCLUDED.infections_spread
-            `, [guildId, userId, data.hgWins, data.brWins, data.infectionsSpread]);
+                    infections_spread = user_stats.infections_spread + EXCLUDED.infections_spread,
+                    gg_wins = user_stats.gg_wins + EXCLUDED.gg_wins
+            `, [guildId, userId, data.hgWins, data.brWins, data.infectionsSpread, data.ggWins ?? 0]);
         }
 
         // Upsert word_stats
@@ -222,6 +226,7 @@ async function flushStats() {
             p.hgWins += data.hgWins;
             p.brWins += data.brWins;
             p.infectionsSpread += data.infectionsSpread;
+            p.ggWins = (p.ggWins || 0) + (data.ggWins || 0);
         }
         for (const [key, data] of wordEntries) {
             const parts = key.split(':');
@@ -254,6 +259,11 @@ function addHgWin(guildId, userId) {
     getPendingUser(guildId, userId).hgWins++;
 }
 
+function addGgWin(guildId, userId) {
+    if (!guildId || !userId) return;
+    getPendingUser(guildId, userId).ggWins++;
+}
+
 function addBrWin(guildId, userId) {
     if (!guildId || !userId) return;
     getPendingUser(guildId, userId).brWins++;
@@ -279,19 +289,21 @@ async function getStats(guildId, userId) {
         hgWins: 0,
         brWins: 0,
         infectionsSpread: 0,
+        ggWins: 0,
         words: {}
     };
 
     if (process.env.DATABASE_URL && dbInitialized) {
         try {
             const userRes = await pool.query(
-                'SELECT hg_wins, br_wins, infections_spread FROM user_stats WHERE guild_id = $1 AND user_id = $2',
+                'SELECT hg_wins, br_wins, infections_spread, COALESCE(gg_wins, 0) as gg_wins FROM user_stats WHERE guild_id = $1 AND user_id = $2',
                 [guildId, userId]
             );
             if (userRes.rows.length > 0) {
                 result.hgWins = userRes.rows[0].hg_wins;
                 result.brWins = userRes.rows[0].br_wins;
                 result.infectionsSpread = userRes.rows[0].infections_spread;
+                result.ggWins = userRes.rows[0].gg_wins;
             }
 
             const wordRes = await pool.query(
@@ -323,6 +335,7 @@ async function getStats(guildId, userId) {
         result.hgWins += p.hgWins;
         result.brWins += p.brWins;
         result.infectionsSpread += p.infectionsSpread;
+        result.ggWins += (p.ggWins || 0);
     }
 
     for (const [key, p] of pendingWordStats.entries()) {
@@ -337,6 +350,24 @@ async function getStats(guildId, userId) {
     }
 
     return result;
+}
+
+async function getGgLeaderboard(guildId, limit = 10) {
+    if (!process.env.DATABASE_URL || !dbInitialized) return [];
+    try {
+        const res = await pool.query(
+            'SELECT user_id, COALESCE(gg_wins, 0) as gg_wins FROM user_stats WHERE guild_id = $1 AND COALESCE(gg_wins, 0) > 0 ORDER BY gg_wins DESC LIMIT $2',
+            [guildId, limit]
+        );
+        return res.rows.map((row, idx) => ({
+            userId: row.user_id,
+            count: parseInt(row.gg_wins, 10),
+            rank: idx + 1
+        }));
+    } catch (err) {
+        console.error('[Stats] Error fetching GeoGuesser leaderboard:', err);
+        return [];
+    }
 }
 
 async function getLeaderboard(guildId, word, limit = 10) {
@@ -433,15 +464,17 @@ module.exports = {
     TRACKED_WORDS,
     addHgWin,
     addBrWin,
+    addGgWin,
     addInfectionSpread,
     addWordCount,
     getStats,
     getLeaderboard,
+    getGgLeaderboard,
     trackMessage,
     resetDatabase,
     setLastFmUser,
     getLastFmUser,
     getOrGenerateBoobSize,
-    pool, // export for migration script
+    pool,
     flushStats
 };

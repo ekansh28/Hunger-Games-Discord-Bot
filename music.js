@@ -139,9 +139,14 @@ function describeError(err) {
 // Module factory — call once with your discord.js Client
 // ============================================================
 function setupMusic(client) {
+    // Build YouTube cookies array from env if provided
+    let ytCookies;
+    if (process.env.YOUTUBE_COOKIES) {
+        try { ytCookies = JSON.parse(process.env.YOUTUBE_COOKIES); } catch {}
+    }
+
     const distube = new DisTube(client, {
         plugins: [
-            // More specific plugins first; yt-dlp (700+ sites) last as a catch-all.
             new FilePlugin(),
             new SpotifyPlugin(
                 process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET
@@ -149,11 +154,10 @@ function setupMusic(client) {
                     : undefined,
             ),
             new SoundCloudPlugin(),
-            new YtDlpPlugin({
-                update: false,
-                args: ['--enable-file-urls']
-            }), // relies on a system-installed yt-dlp binary (see nixpacks.toml)
-
+            // @distube/youtube handles YouTube links directly (faster than yt-dlp for YT)
+            new YouTubePlugin(ytCookies ? { cookies: ytCookies } : {}),
+            // yt-dlp as catch-all for 700+ other sites
+            new YtDlpPlugin({ update: false }),
         ],
         emitNewSongOnly: true,
         savePreviousSongs: true,
@@ -175,13 +179,11 @@ function setupMusic(client) {
         })
         .on('finish', queue => {
             console.log('[Music] Queue finished');
+            queue.textChannel?.send('✅ Queue finished. Use `/play` to add more songs.').catch(() => {});
+        })
+        .on('finishSong', (queue, song) => {
             if (queue.metadata?.leaveOnFinish) {
-                queue.voice.leave();
                 queue.textChannel?.send('🤠 Finished playing Alabama, leaving the voice channel.').catch(() => {});
-            } else {
-                queue.textChannel?.send(
-                    `Queue finished. Songs remaining: ${queue.songs.length}`
-                ).catch(() => {});
             }
         })
         .on('disconnect', queue => {
@@ -325,6 +327,31 @@ function setupMusic(client) {
         await interaction.reply(`🔁 Loop mode: **${labelMap[mode]}**.`);
     }
 
+    async function cmdSeek(interaction) {
+        const queue = requireControlQueue(interaction);
+        if (!queue) return;
+        const seconds = interaction.options.getInteger('seconds', true);
+        try {
+            await queue.seek(seconds);
+            const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+            const ss = String(seconds % 60).padStart(2, '0');
+            await interaction.reply(`⏩ Seeked to **${mm}:${ss}**.`);
+        } catch (err) {
+            await interaction.reply({ embeds: [errorEmbed('❌ Could not seek', describeError(err))], flags: 64 });
+        }
+    }
+
+    async function cmdRemove(interaction) {
+        const queue = requireControlQueue(interaction);
+        if (!queue) return;
+        const position = interaction.options.getInteger('position', true);
+        if (position < 1 || position >= queue.songs.length) {
+            return interaction.reply({ content: `❌ Invalid position. Queue has ${queue.songs.length - 1} upcoming song(s).`, flags: 64 });
+        }
+        const removed = queue.songs.splice(position, 1)[0];
+        await interaction.reply(`🗑️ Removed **${truncate(removed.name || 'Unknown', 80)}** from the queue.`);
+    }
+
     async function cmdQueue(interaction) {
         const queue = requireQueue(interaction);
         if (!queue) return;
@@ -386,11 +413,20 @@ function setupMusic(client) {
             .setName('loop')
             .setDescription('Set the loop mode.')
             .addStringOption(opt =>
-                opt
-                    .setName('mode')
-                    .setDescription('Loop mode')
-                    .setRequired(true)
+                opt.setName('mode').setDescription('Loop mode').setRequired(true)
                     .addChoices({ name: 'Off', value: 'off' }, { name: 'Song', value: 'song' }, { name: 'Queue', value: 'queue' }),
+            ),
+        new SlashCommandBuilder()
+            .setName('seek')
+            .setDescription('Seek to a position in the current song.')
+            .addIntegerOption(opt =>
+                opt.setName('seconds').setDescription('Position in seconds').setMinValue(0).setRequired(true),
+            ),
+        new SlashCommandBuilder()
+            .setName('remove')
+            .setDescription('Remove a song from the queue by its position.')
+            .addIntegerOption(opt =>
+                opt.setName('position').setDescription('Queue position (1 = next song)').setMinValue(1).setRequired(true),
             ),
     ];
 
@@ -407,6 +443,8 @@ function setupMusic(client) {
         volume: cmdVolume,
         shuffle: cmdShuffle,
         loop: cmdLoop,
+        seek: cmdSeek,
+        remove: cmdRemove,
     };
 
     const commandNames = new Set(Object.keys(handlers));
