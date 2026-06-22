@@ -2,11 +2,18 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// Users blocked from using =edit (populated via =disable-edit @user)
+const blockedEditUsers = new Set();
+
 const COMFY_URL = "https://47e1de4312911.notebooksn.jarvislabs.net";
 
 async function handleEditCommand(message) {
     const args = message.content.trim().split(/\s+/);
     let prompt = args.slice(1).join(' ');
+
+    if (blockedEditUsers.has(message.author.id)) {
+        return message.channel.send(`<@${message.author.id}> You are not allowed to use \`=edit\`.`);
+    }
 
     if (!prompt) {
         return message.channel.send(`<@${message.author.id}> You need to provide a prompt! Usage: reply to an image with \`=edit <prompt>\``);
@@ -179,4 +186,4 @@ async function handleEditCommand(message) {
     }
 }
 
-module.exports = handleEditCommand;
+module.exports = { handleEditCommand, blockedEditUsers };

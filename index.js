@@ -210,11 +210,31 @@ client.on('messageCreate', async (message) => {
 
     const contentLower = message.content.toLowerCase();
 
-    // ── =edit (Flux Image Editor) ─────────────────────────────────────────────
+    // ── =edit (Image Editor) ─────────────────────────────────────────────
     if (contentLower.startsWith('=edit ') || contentLower === '=edit') {
-        const handleEditCommand = require('./editImage');
+        const { handleEditCommand } = require('./editImage');
         await handleEditCommand(message);
         return;
+    }
+
+    // ── =disable-edit / =enable-edit (Admin) ─────────────────────────────
+    if (contentLower.startsWith('=disable-edit') || contentLower.startsWith('=enable-edit')) {
+        const { isAuthorized } = require('./authorization');
+        if (!isAuthorized(message.member)) {
+            return message.channel.send(`<@${message.author.id}> You are not authorized to use this command.`);
+        }
+        const { blockedEditUsers } = require('./editImage');
+        const target = message.mentions.users.first();
+        if (!target) {
+            return message.channel.send(`<@${message.author.id}> Please mention a user. Usage: \`=disable-edit @user\``);
+        }
+        if (contentLower.startsWith('=disable-edit')) {
+            blockedEditUsers.add(target.id);
+            return message.channel.send(`✅ <@${target.id}> has been blocked from using \`=edit\`.`);
+        } else {
+            blockedEditUsers.delete(target.id);
+            return message.channel.send(`✅ <@${target.id}> can now use \`=edit\` again.`);
+        }
     }
 
     // ── =p / =pt (Pirate Translator) ──────────────────────────────────────────
