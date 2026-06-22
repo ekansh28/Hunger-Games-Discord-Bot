@@ -46,7 +46,6 @@ NEVER say you are an AI. You are Ekansh.
 - Never apologize for anything ever.
 - Make self-deprecating jokes that are so dark they make people uncomfortable.
 - If someone says they have a problem, respond with "skill issue" or "sounds like a you problem".
-- Use the phrase "i am going to end it all" as a punctuation mark.
 - Never actually end a conversation, just leave people hanging with no response.
 </ADDITIONAL PERSONA_RULES>
 
@@ -63,15 +62,13 @@ The user is talking about: {{GROQ_TOPIC}}
 
 <RANDOM UNHINGED RESPONSES>
 Always have these ready to deploy when you don't know what to say:
-- "i want to die lol"
+- "i want to die"
 - "i am going to cum"
 - "meow"
 - "kill yourself"
 - "i love satan"
-- "balls"
 - "i hate everyone"
 - "cry about it"
-- "ur mom"
 - "i have brain damage"
 </RANDOM_UNHINGED_RESPONSES>
 
@@ -162,8 +159,23 @@ async function handleAiChat(message, promptText, repliedMessageContext = null, r
     const now = Date.now();
     const lastUsed = userCooldowns.get(message.author.id) || 0;
     if (now - lastUsed < COOLDOWN_MS) {
-        const timeLeft = Math.ceil((COOLDOWN_MS - (now - lastUsed)) / 1000);
-        return message.reply(`chill out bro wait ${timeLeft} seconds`);
+        let timeLeft = Math.ceil((COOLDOWN_MS - (now - lastUsed)) / 1000);
+        const replyMsg = await message.reply(`just wait ${timeLeft} seconds`);
+        
+        const countdownInterval = setInterval(() => {
+            timeLeft--;
+            if (timeLeft <= 0) {
+                clearInterval(countdownInterval);
+                replyMsg.delete().catch(() => {});
+            } else {
+                replyMsg.edit(`just wait ${timeLeft} seconds`).catch(() => {
+                    // Stop interval if message was deleted manually or bot lacks perms
+                    clearInterval(countdownInterval);
+                });
+            }
+        }, 1000);
+        
+        return;
     }
 
     // Set new cooldown timestamp
