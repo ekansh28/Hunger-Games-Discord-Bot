@@ -39,58 +39,38 @@ async function populateCache() {
     isFetchingCache = false;
 }
 
-async function checkGoogleStreetViewMetadata(lat, lon) {
-    const url = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${lat},${lon}&radius=2000&key=${GOOGLE_API_KEY}`;
-    return new Promise((resolve) => {
-        https.get(url, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                try {
-                    const json = JSON.parse(data);
-                    if (json.status === 'OK' && json.location) {
-                        resolve(json.location);
-                    } else {
-                        resolve(null);
-                    }
-                } catch (e) {
-                    resolve(null);
-                }
-            });
-        }).on('error', () => resolve(null));
-    });
-}
 
 async function getRandomGoogleLocation() {
     const uniqueCountries = [...new Set(cities.map(c => c.country))];
 
-    for (let attempt = 0; attempt < 10; attempt++) {
-        // Pick a country uniformly at random to ensure equal chances
+    for (let attempt = 0; attempt < 5; attempt++) {
         const randomCountry = uniqueCountries[Math.floor(Math.random() * uniqueCountries.length)];
         const countryCities = cities.filter(c => c.country === randomCountry);
         const city = countryCities[Math.floor(Math.random() * countryCities.length)];
         
-        // Randomize the coordinates slightly around the city center
-        const latOffset = (Math.random() - 0.5) * 0.05;
-        const lonOffset = (Math.random() - 0.5) * 0.05;
+        const latOffset = (Math.random() - 0.5) * 0.04;
+        const lonOffset = (Math.random() - 0.5) * 0.04;
         
-        const centerLat = city.lat + latOffset;
-        const centerLon = city.lon + lonOffset;
+        const lat = city.lat + latOffset;
+        const lon = city.lon + lonOffset;
+
+        // First check metadata to confirm Street View coverage exists
+        const metaUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${lat},${lon}&radius=5000&source=outdoor&key=${GOOGLE_API_KEY}`;
         
-        // Check if there is actual Google Street View coverage here
-        const panoLocation = await checkGoogleStreetViewMetadata(centerLat, centerLon);
-        
-        if (panoLocation) {
-            // Randomize camera angle
-            const heading = Math.floor(Math.random() * 360);
-            const pitch = Math.floor(Math.random() * 20) - 10; // -10 to +10 degrees
+        try {
+            const metaRes = await fetch(metaUrl);
+            const meta = await metaRes.json();
+            console.log(`[GeoGuesser] Attempt ${attempt + 1} - ${city.country} (${lat.toFixed(4)},${lon.toFixed(4)}): ${meta.status}`);
             
-            const imageUrl = `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${panoLocation.lat},${panoLocation.lng}&heading=${heading}&pitch=${pitch}&fov=90&key=${GOOGLE_API_KEY}`;
-            
-            return {
-                country: city.country,
-                image_url: imageUrl
-            };
+            if (meta.status === 'OK' && meta.location) {
+                const heading = Math.floor(Math.random() * 360);
+                const pitch = Math.floor(Math.random() * 20) - 10;
+                const imageUrl = `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${meta.location.lat},${meta.location.lng}&heading=${heading}&pitch=${pitch}&fov=90&key=${GOOGLE_API_KEY}`;
+                
+                return { country: city.country, image_url: imageUrl };
+            }
+        } catch (e) {
+            console.error(`[GeoGuesser] Metadata fetch error: ${e.message}`);
         }
     }
     return null;
