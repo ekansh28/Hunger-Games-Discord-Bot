@@ -1,6 +1,5 @@
 const { pool } = require('./stats');
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 // System prompt inspired by the provided finetune dataset
@@ -155,7 +154,7 @@ async function saveUserHistory(userId, history) {
 }
 
 async function handleAiChat(message, promptText, repliedMessageContext = null, recentChannelMessages = []) {
-    if (!OPENROUTER_API_KEY) {
+    if (!GROQ_API_KEY) {
         return message.reply("bro im broke i cant afford the api key rn");
     }
 
@@ -268,29 +267,37 @@ Reply STRICTLY with a valid JSON object matching this schema:
     messages.push({ role: "user", content: promptText });
 
     try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
-                "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/ekansh28/Hunger-Games-Discord-Bot", // Required by OpenRouter
-                "X-Title": "Hunger Games Discord Bot"
+                "Authorization": `Bearer ${GROQ_API_KEY}`,
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                model: "openai/gpt-oss-120b:free",
+                model: "llama-3.3-70b-versatile",
                 messages: messages,
-                max_tokens: 100, // Keep responses short
+                max_completion_tokens: 150, // Keep responses relatively short
                 temperature: 0.9, // High temp for chaotic behavior
                 top_p: 0.9,
             })
         });
 
         if (!response.ok) {
-            console.error('[AiChat] OpenRouter API Error:', response.status, response.statusText);
+            const errorBody = await response.text();
+            console.error('[AiChat] Groq API Error:', response.status, response.statusText, errorBody);
             
             // Check specifically for rate limiting (429)
             if (response.status === 429) {
                 return message.reply("i am rate limited becuase using a free model wait a few seconds or whatever");
+            }
+
+            if (response.status === 403) {
+                try {
+                    const errData = JSON.parse(errorBody);
+                    return message.reply(`im blocked bro (403): ${errData.error?.message || 'Forbidden'}`);
+                } catch(e) {
+                    return message.reply("im blocked bro (403 Forbidden)");
+                }
             }
             
             return message.reply("my brain hurts");
