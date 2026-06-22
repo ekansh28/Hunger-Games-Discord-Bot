@@ -97,7 +97,9 @@ const leaderboardSlashCommand = new SlashCommandBuilder()
 
 client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
+    // Pre-fetch locations for GeoGuesser to make it instant
     populateCache();
+    setInterval(populateCache, 2 * 60 * 1000); // Top up the cache every 2 minutes
     await Infection.load();
     try {
         const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

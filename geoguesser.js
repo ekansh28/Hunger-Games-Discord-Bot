@@ -30,10 +30,15 @@ async function populateCache() {
     if (isFetchingCache) return;
     isFetchingCache = true;
     try {
-        while (locationCache.length < 3) {
-            const loc = googleDenied ? await getRandomMapillaryLocation() : await getRandomGoogleLocation();
-            if (loc) {
-                locationCache.push(loc);
+        const targetCacheSize = 5;
+        const needed = targetCacheSize - locationCache.length;
+        if (needed > 0) {
+            const promises = Array.from({ length: needed }).map(() => 
+                googleDenied ? getRandomMapillaryLocation() : getRandomGoogleLocation()
+            );
+            const results = await Promise.all(promises);
+            for (const loc of results) {
+                if (loc) locationCache.push(loc);
             }
         }
     } catch (e) {
