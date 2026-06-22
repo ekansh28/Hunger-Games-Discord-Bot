@@ -97,7 +97,7 @@ async function handleEditCommand(message) {
         };
 
         // Inform the user that generation has started
-        message.channel.send(`<@${message.author.id}> ⏳ The job is queued with BytePlus ARK API and generation has started...`).catch(() => {});
+        message.channel.send(`<@${message.author.id}> Generation has started... (15s)`).catch(() => {});
 
         // 3. Send request to BytePlus
         const arkRes = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
