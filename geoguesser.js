@@ -115,7 +115,7 @@ async function handleGeoGuesser(message) {
     if (!location) {
         // Cache was empty, fetch dynamically
         loadingMsg = await message.channel.send('Loading a random location from the world...');
-        location = await getRandomMapillaryLocation();
+        location = await getRandomGoogleLocation();
     }
     
     if (!location) {
