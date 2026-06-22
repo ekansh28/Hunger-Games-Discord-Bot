@@ -1,5 +1,3 @@
-const fetch = require('node-fetch');
-
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 // System prompt inspired by the provided finetune dataset
