@@ -76,7 +76,7 @@ async function getRandomMapillaryLocation() {
         const url = `https://graph.mapillary.com/images?fields=id,thumb_2048_url&bbox=${bbox}&limit=10`;
         try {
             const res = await fetchMapillaryData(url);
-            if (res.data && res.data.length > 0) {
+            if (res && res.data && res.data.length > 0) {
                 const randomImg = res.data[Math.floor(Math.random() * res.data.length)];
                 if (randomImg.thumb_2048_url) {
                     return { country: city.country, image_url: randomImg.thumb_2048_url };
