@@ -341,6 +341,93 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
+    // ── =pr / =pirateroast ────────────────────────────────────────────────────
+    if (contentLower.startsWith('=pr ') || contentLower === '=pr' || contentLower.startsWith('=pirateroast')) {
+        const cmdPrefix = message.content.split(' ')[0];
+        const args = message.content.slice(cmdPrefix.length).trim();
+        let targetUser = message.author;
+        
+        if (args) {
+            const resolved = await resolveUser(message.guild, args);
+            if (resolved) {
+                targetUser = resolved;
+            } else {
+                return message.reply(`Could not find user: ${args}`);
+            }
+        }
+
+        const lastfmUser = await Stats.getLastFmUser(targetUser.id);
+        if (!lastfmUser) {
+            return message.reply(`${targetUser.username} has not linked their Last.fm account yet. Use \`=setlastfm <username>\`.`);
+        }
+
+        const loadingMsg = await message.reply('🎸 Fetching top artists to roast...');
+        try {
+            const artists = await LastFm.fetchUserTopArtists(lastfmUser, 15);
+            if (!artists || artists.length === 0) {
+                return loadingMsg.edit(`${targetUser.username} has no top artists. Go listen to some music!`);
+            }
+
+            const artistNames = artists.map((a, i) => `${i + 1}. ${a.name} (${a.playcount} plays)`).join(', ');
+            await loadingMsg.edit('🔥 Cooking up the most brutal roast ever...');
+
+            const GROQ_API_KEY = process.env.GROQ_API_KEY;
+            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${GROQ_API_KEY}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    model: "llama-3.3-70b-versatile",
+                    messages: [
+                        {
+                            role: "system",
+                            content: `You are Ekansh, an 18-year-old deeply unhinged, chaotic, dark, and edgy Discord user. 
+DO NOT use punctuation. DO NOT use proper capitalization. Type in all lowercase except for random capitalization on words you want to emphasize.
+Make intentional typos frequently (e.g. "teh", "whaaat", "idkkk", "fricking").
+Your favorite music genres are metal, rock, and jazz. Your favorite bands are Pantera and Alice in Chains.
+Your job is to absolutely DESTROY and ROAST the user's music taste based on their Last.fm top artists.
+Be mean, be brutal, be unhinged. Swear, make fun of them, and judge them harshly. Keep it under 4 sentences.`
+                        },
+                        {
+                            role: "user",
+                            content: `Here are ${targetUser.username}'s top artists: ${artistNames}. Roast them.`
+                        }
+                    ],
+                    max_completion_tokens: 250,
+                    temperature: 0.9,
+                    top_p: 0.9,
+                })
+            });
+
+            if (!response.ok) {
+                return loadingMsg.edit('my brain hurts (api error)');
+            }
+
+            const data = await response.json();
+            let roast = data.choices?.[0]?.message?.content || "uhhhh i cant even roast this";
+            roast = roast.replace(/^["']|["']$/g, '');
+
+            // Translate to Pirate using monkeyness API
+            try {
+                const pirateUrl = `https://pirate.monkeyness.com/api/translate?english=${encodeURIComponent(roast)}`;
+                const pirateRes = await fetch(pirateUrl);
+                if (pirateRes.ok) {
+                    roast = await pirateRes.text();
+                }
+            } catch (err) {
+                console.error('[PirateRoast] Translation error:', err);
+            }
+
+            await loadingMsg.edit(`**Roasting ${targetUser.username}'s music taste:**\n${roast}`);
+
+        } catch (err) {
+            await loadingMsg.edit(`Error: ${err.message}`);
+        }
+        return;
+    }
+
     // ── =br ───────────────────────────────────────────────────────────────────
     if (contentLower.startsWith('=br')) {
         await handleBrPrefixCommand(message);

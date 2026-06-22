@@ -97,5 +97,6 @@ function generateProgressBar(percentage) {
 
 module.exports = {
     getNicheScore,
-    generateProgressBar
+    generateProgressBar,
+    fetchUserTopArtists
 };
