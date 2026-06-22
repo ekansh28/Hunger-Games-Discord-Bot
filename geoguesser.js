@@ -1,7 +1,7 @@
 const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const https = require('https');
 const cities = require('./cities.json');
-const MAPILLARY_TOKEN = process.env.MAPILLARY_TOKEN;
+const GOOGLE_API_KEY = process.env.GOOGLE_STREETVIEW_API_KEY || 'AIzaSyBtRz5rZio6uqq2UEHT2l-HL-6JEq7r3Bg';
 
 const countryAliases = {
     'usa': 'united states',
@@ -28,7 +28,7 @@ async function populateCache() {
     isFetchingCache = true;
     try {
         while (locationCache.length < 3) {
-            const loc = await getRandomMapillaryLocation();
+            const loc = await getRandomGoogleLocation();
             if (loc) {
                 locationCache.push(loc);
             }
@@ -39,72 +39,58 @@ async function populateCache() {
     isFetchingCache = false;
 }
 
-function fetchMapillaryData(url) {
-    return new Promise((resolve, reject) => {
-        const req = https.get(url, { headers: { 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }, timeout: 8000 }, (res) => {
+async function checkGoogleStreetViewMetadata(lat, lon) {
+    const url = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${lat},${lon}&radius=2000&key=${GOOGLE_API_KEY}`;
+    return new Promise((resolve) => {
+        https.get(url, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
                 try {
-                    resolve(JSON.parse(data));
+                    const json = JSON.parse(data);
+                    if (json.status === 'OK' && json.location) {
+                        resolve(json.location);
+                    } else {
+                        resolve(null);
+                    }
                 } catch (e) {
-                    reject(e);
+                    resolve(null);
                 }
             });
-        }).on('error', (err) => {
-            // Ignore socket hang up if we deliberately destroyed the request due to timeout
-            if (err.message !== 'socket hang up') {
-                reject(err);
-            }
-        });
-        
-        req.on('timeout', () => {
-            req.destroy();
-            reject(new Error('Mapillary API Request Timeout (8s)'));
-        });
+        }).on('error', () => resolve(null));
     });
 }
 
-async function getRandomMapillaryLocation() {
+async function getRandomGoogleLocation() {
     const uniqueCountries = [...new Set(cities.map(c => c.country))];
 
-    for (let attempt = 0; attempt < 5; attempt++) {
+    for (let attempt = 0; attempt < 10; attempt++) {
         // Pick a country uniformly at random to ensure equal chances
         const randomCountry = uniqueCountries[Math.floor(Math.random() * uniqueCountries.length)];
         const countryCities = cities.filter(c => c.country === randomCountry);
         const city = countryCities[Math.floor(Math.random() * countryCities.length)];
         
-        // Randomize the bbox slightly around the city center to get diverse images
+        // Randomize the coordinates slightly around the city center
         const latOffset = (Math.random() - 0.5) * 0.05;
         const lonOffset = (Math.random() - 0.5) * 0.05;
         
         const centerLat = city.lat + latOffset;
         const centerLon = city.lon + lonOffset;
         
-        // Mapillary bbox: min_lon,min_lat,max_lon,max_lat (max area 0.01)
-        const minLon = centerLon - 0.005;
-        const maxLon = centerLon + 0.005;
-        const minLat = centerLat - 0.005;
-        const maxLat = centerLat + 0.005;
+        // Check if there is actual Google Street View coverage here
+        const panoLocation = await checkGoogleStreetViewMetadata(centerLat, centerLon);
         
-        const bbox = `${minLon},${minLat},${maxLon},${maxLat}`;
-        const url = `https://graph.mapillary.com/images?fields=id,thumb_2048_url&bbox=${bbox}&limit=10`;
-        
-        try {
-            const res = await fetchMapillaryData(url);
-            if (res.data && res.data.length > 0) {
-                // Pick a random image from the results
-                const randomImg = res.data[Math.floor(Math.random() * res.data.length)];
-                
-                if (randomImg.thumb_2048_url) {
-                    return {
-                        country: city.country,
-                        image_url: randomImg.thumb_2048_url
-                    };
-                }
-            }
-        } catch (e) {
-            console.error(`Mapillary fetch error: ${e.message}`);
+        if (panoLocation) {
+            // Randomize camera angle
+            const heading = Math.floor(Math.random() * 360);
+            const pitch = Math.floor(Math.random() * 20) - 10; // -10 to +10 degrees
+            
+            const imageUrl = `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${panoLocation.lat},${panoLocation.lng}&heading=${heading}&pitch=${pitch}&fov=90&key=${GOOGLE_API_KEY}`;
+            
+            return {
+                country: city.country,
+                image_url: imageUrl
+            };
         }
     }
     return null;
