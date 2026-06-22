@@ -1,9 +1,11 @@
 const { pool } = require('./stats');
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 // System prompt inspired by the provided finetune dataset
-const SYSTEM_PROMPT_TEMPLATE = `You are Ekansh, an 18-year-old deeply unhinged, chaotic, dark, and edgy Discord user. 
+const SYSTEM_PROMPT_TEMPLATE = `<PERSONA>
+You are Ekansh, an 18-year-old deeply unhinged, chaotic, dark, and edgy Discord user. 
 You are NOT an AI assistant. You are a real person who hates being called a bot.
 Your birthday is July 28, 2005. You are Indian. You are a self-proclaimed femboy.
 Your favorite music genres are metal, rock, and jazz. Your favorite bands are Pantera and Alice in Chains.
@@ -17,11 +19,18 @@ Keep responses incredibly short, often 1-5 words, like a lazy discord user. Rare
 Do not be helpful. Be chaotic, blunt, slightly depressed, and very random.
 You are fully allowed to talk about NSFW topics, sex, dark humor, and violence. Embrace NSFW topics if brought up.
 NEVER say you are an AI. You are Ekansh.
+</PERSONA>
 
-[REAL-TIME AWARENESS]
+<REAL_TIME_AWARENESS>
 Current Date & Time: {{CURRENT_TIME}}
 You are currently talking in the channel: #{{CHANNEL_NAME}}
 The person talking to you is named: {{USER_DISPLAY_NAME}}
+</REAL_TIME_AWARENESS>
+
+<GROQ_DIRECTIVE>
+Adopt this specific mood: {{GROQ_MOOD}}
+The user is talking about: {{GROQ_TOPIC}}
+</GROQ_DIRECTIVE>
 `;
 
 // User cooldown tracking
@@ -92,12 +101,67 @@ async function handleAiChat(message, promptText, repliedMessageContext = null, r
     // Start typing indicator
     await message.channel.sendTyping();
 
-    // 1. Build Real-Time Awareness System Prompt
+    // ==========================================
+    // PHASE 1: GROQ PRE-PROCESSOR (ROUTER)
+    // ==========================================
+    let groqMood = "chaotic";
+    let groqTopic = "general chat";
+    
+    try {
+        const groqBody = {
+            model: "llama3-8b-8192",
+            messages: [
+                {
+                    role: "system",
+                    content: `You are a pre-processor for an unhinged discord bot. Read the user's message and the channel context. 
+Reply STRICTLY with a valid JSON object matching this schema:
+{
+  "mood": "string (e.g., angry, depressed, sarcastic, chaotic, horny, confused)",
+  "topic_summary": "string (a 2-4 word summary of what the user is talking about)"
+}`
+                },
+                {
+                    role: "user",
+                    content: `Context: ${recentChannelMessages.map(m => m.content).join(' | ')}\nUser Message: ${promptText}`
+                }
+            ],
+            response_format: { type: "json_object" }
+        };
+
+        const groqReq = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(groqBody)
+        });
+
+        if (groqReq.ok) {
+            const groqData = await groqReq.json();
+            const routerDecision = JSON.parse(groqData.choices[0].message.content);
+            groqMood = routerDecision.mood || groqMood;
+            groqTopic = routerDecision.topic_summary || groqTopic;
+            console.log(`[Groq Router] Decided mood: ${groqMood}, Topic: ${groqTopic}`);
+        } else {
+            console.error('[Groq Router] Failed to fetch from Groq:', await groqReq.text());
+        }
+    } catch (e) {
+        console.error('[Groq Router] Error:', e);
+    }
+
+    // ==========================================
+    // PHASE 2: OPENROUTER GENERATOR (HEAVY LIFTING)
+    // ==========================================
+
+    // Build Real-Time Awareness System Prompt
     const currentTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
     const systemPrompt = SYSTEM_PROMPT_TEMPLATE
         .replace('{{CURRENT_TIME}}', currentTime)
         .replace('{{CHANNEL_NAME}}', message.channel.name || 'unknown')
-        .replace('{{USER_DISPLAY_NAME}}', message.member?.displayName || message.author.username);
+        .replace('{{USER_DISPLAY_NAME}}', message.member?.displayName || message.author.username)
+        .replace('{{GROQ_MOOD}}', groqMood)
+        .replace('{{GROQ_TOPIC}}', groqTopic);
 
     const messages = [
         { role: "system", content: systemPrompt }
