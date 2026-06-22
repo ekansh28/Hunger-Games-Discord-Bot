@@ -361,7 +361,10 @@ client.on('messageCreate', async (message) => {
             return message.reply(`${targetUser.username} has not linked their Last.fm account yet. Use \`=setlastfm <username>\`.`);
         }
 
-        const loadingMsg = await message.reply('🎸 Fetching top artists to roast...');
+        const loadingEmbed = new EmbedBuilder()
+            .setColor('#FFA500')
+            .setDescription('🎸 Fetching top artists to roast...');
+        const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
         try {
             const artists = await LastFm.fetchUserTopArtists(lastfmUser, 15);
             if (!artists || artists.length === 0) {
@@ -369,8 +372,6 @@ client.on('messageCreate', async (message) => {
             }
 
             const artistNames = artists.map((a, i) => `${i + 1}. ${a.name} (${a.playcount} plays)`).join(', ');
-            await loadingMsg.edit('🔥 Cooking up the most brutal roast ever...');
-
             const GROQ_API_KEY = process.env.GROQ_API_KEY;
             const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                 method: "POST",
@@ -388,11 +389,12 @@ DO NOT use punctuation. DO NOT use proper capitalization. Type in all lowercase 
 Make intentional typos frequently (e.g. "teh", "whaaat", "idkkk", "fricking").
 Your favorite music genres are metal, rock, and jazz. Your favorite bands are Pantera and Alice in Chains.
 Your job is to absolutely DESTROY and ROAST the user's music taste based on their Last.fm top artists.
-Be mean, be brutal, be unhinged. Swear, make fun of them, and judge them harshly. Keep it under 4 sentences.`
+Be mean, be brutal, be unhinged. Swear, make fun of them, and judge them harshly. Keep it under 4 sentences.
+IMPORTANT: You MUST wrap every artist name you mention in **double asterisks** to bold them (e.g. **taylor swift**).`
                         },
                         {
                             role: "user",
-                            content: `Here are ${targetUser.username}'s top artists: ${artistNames}. Roast them.`
+                            content: `Here are ${targetUser.username}'s top artists: ${artistNames}. Roast them. Remember to bold the artist names with **.`
                         }
                     ],
                     max_completion_tokens: 250,
@@ -402,7 +404,8 @@ Be mean, be brutal, be unhinged. Swear, make fun of them, and judge them harshly
             });
 
             if (!response.ok) {
-                return loadingMsg.edit('my brain hurts (api error)');
+                loadingEmbed.setDescription('my brain hurts (api error)');
+                return loadingMsg.edit({ embeds: [loadingEmbed] });
             }
 
             const data = await response.json();
@@ -420,10 +423,17 @@ Be mean, be brutal, be unhinged. Swear, make fun of them, and judge them harshly
                 console.error('[PirateRoast] Translation error:', err);
             }
 
-            await loadingMsg.edit(`**Roasting ${targetUser.username}'s music taste:**\n${roast}`);
+            const finalEmbed = new EmbedBuilder()
+                .setTitle(`🏴‍☠️ Roasting ${targetUser.username}'s Music Taste`)
+                .setDescription(roast)
+                .setColor('#FF0000')
+                .setThumbnail(targetUser.displayAvatarURL({ extension: 'png', size: 256 }));
+            
+            await loadingMsg.edit({ content: null, embeds: [finalEmbed] });
 
         } catch (err) {
-            await loadingMsg.edit(`Error: ${err.message}`);
+            loadingEmbed.setDescription(`Error: ${err.message}`);
+            await loadingMsg.edit({ embeds: [loadingEmbed] });
         }
         return;
     }
