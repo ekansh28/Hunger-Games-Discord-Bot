@@ -68,7 +68,8 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMessageReactions,
-    ]
+    ],
+    allowedMentions: { parse: [] }  // ← add this
 });
 
 const music = setupMusic(client);
