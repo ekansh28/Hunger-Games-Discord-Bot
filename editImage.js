@@ -96,61 +96,81 @@ async function handleEditCommand(message) {
             watermark: false
         };
 
-        // Inform the user that generation has started
-        message.channel.send(`<@${message.author.id}> Generation has started... (15s)`).catch(() => {});
-
-        // 3. Send request to BytePlus
-        const arkRes = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${arkApiKey}`
-            },
-            body: JSON.stringify(payload)
-        });
-
-        const arkData = await arkRes.json();
-
-        if (!arkRes.ok) {
-            console.error('[ARK API] Error response:', arkData);
-            throw new Error(arkData.error?.message || arkData.error?.code || JSON.stringify(arkData));
-        }
-
-        if (!arkData.data || !arkData.data[0] || !arkData.data[0].b64_json) {
-            console.error('[ARK API] Invalid response structure:', arkData);
-            throw new Error("No output image returned from the API.");
-        }
-
-        // 4. Decode base64 back to buffer
-        const finalImgBuffer = Buffer.from(arkData.data[0].b64_json, 'base64');
-
-        // 5. Resize final image to 512px max before sending to Discord (optional, but good for saving bandwidth)
-        const finalImg = await loadImage(finalImgBuffer);
-        let finalWidth = finalImg.width;
-        let finalHeight = finalImg.height;
+        // Inform the user that generation has started and start countdown
+        const statusMsg = await message.channel.send(`<@${message.author.id}> Generation has started... (15s)`);
         
-        if (finalWidth > MAX_SIZE || finalHeight > MAX_SIZE) {
-            if (finalWidth > finalHeight) {
-                finalHeight = Math.round((finalHeight * MAX_SIZE) / finalWidth);
-                finalWidth = MAX_SIZE;
+        let timeLeft = 15;
+        const countdownInterval = setInterval(() => {
+            timeLeft--;
+            if (timeLeft > 0) {
+                statusMsg.edit(`<@${message.author.id}> Generation has started... (${timeLeft}s)`).catch(() => {});
             } else {
-                finalWidth = Math.round((finalWidth * MAX_SIZE) / finalHeight);
-                finalHeight = MAX_SIZE;
+                statusMsg.edit(`<@${message.author.id}> Almost done...`).catch(() => {});
+                clearInterval(countdownInterval);
             }
+        }, 1000);
+
+        try {
+            // 3. Send request to BytePlus
+            const arkRes = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${arkApiKey}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const arkData = await arkRes.json();
+
+            if (!arkRes.ok) {
+                console.error('[ARK API] Error response:', arkData);
+                throw new Error(arkData.error?.message || arkData.error?.code || JSON.stringify(arkData));
+            }
+
+            if (!arkData.data || !arkData.data[0] || !arkData.data[0].b64_json) {
+                console.error('[ARK API] Invalid response structure:', arkData);
+                throw new Error("No output image returned from the API.");
+            }
+
+            // 4. Decode base64 back to buffer
+            const finalImgBuffer = Buffer.from(arkData.data[0].b64_json, 'base64');
+
+            // 5. Resize final image to 512px max before sending to Discord
+            const finalImg = await loadImage(finalImgBuffer);
+            let finalWidth = finalImg.width;
+            let finalHeight = finalImg.height;
+            
+            if (finalWidth > MAX_SIZE || finalHeight > MAX_SIZE) {
+                if (finalWidth > finalHeight) {
+                    finalHeight = Math.round((finalHeight * MAX_SIZE) / finalWidth);
+                    finalWidth = MAX_SIZE;
+                } else {
+                    finalWidth = Math.round((finalWidth * MAX_SIZE) / finalHeight);
+                    finalHeight = MAX_SIZE;
+                }
+            }
+
+            const finalCanvas = createCanvas(finalWidth, finalHeight);
+            const finalCtx = finalCanvas.getContext('2d');
+            finalCtx.drawImage(finalImg, 0, 0, finalWidth, finalHeight);
+            const finalResizedBuffer = finalCanvas.toBuffer('image/png');
+
+            clearInterval(countdownInterval);
+            await statusMsg.delete().catch(() => {});
+
+            await message.channel.send({
+                content: `<@${message.author.id}> 🎨 **Edited Image:**\n> *${prompt}*`,
+                files: [{
+                    attachment: finalResizedBuffer,
+                    name: 'edited_image.png'
+                }]
+            });
+        } catch (apiErr) {
+            clearInterval(countdownInterval);
+            await statusMsg.delete().catch(() => {});
+            throw apiErr;
         }
-
-        const finalCanvas = createCanvas(finalWidth, finalHeight);
-        const finalCtx = finalCanvas.getContext('2d');
-        finalCtx.drawImage(finalImg, 0, 0, finalWidth, finalHeight);
-        const finalResizedBuffer = finalCanvas.toBuffer('image/png');
-
-        await message.channel.send({
-            content: `<@${message.author.id}> 🎨 **Edited Image:**\n> *${prompt}*`,
-            files: [{
-                attachment: finalResizedBuffer,
-                name: 'edited_image.png'
-            }]
-        });
 
     } catch (err) {
         console.error('[BytePlusEdit] Error editing image:', err);
