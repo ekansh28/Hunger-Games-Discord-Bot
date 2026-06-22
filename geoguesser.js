@@ -45,17 +45,20 @@ async function populateCache() {
 
 function fetchMapillaryData(url) {
     return new Promise((resolve, reject) => {
-        const req = https.get(url, { headers: { 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }, timeout: 8000 }, (res) => {
+        const req = https.get(url, { headers: { 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }, timeout: 15000 }, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
                 try { resolve(JSON.parse(data)); }
-                catch (e) { reject(e); }
+                catch (e) { resolve(null); } // Don't throw parsing errors
             });
         }).on('error', (err) => {
-            if (err.message !== 'socket hang up') reject(err);
+            resolve(null); // Return null on network error to allow retries
         });
-        req.on('timeout', () => { req.destroy(); reject(new Error('Mapillary timeout')); });
+        req.on('timeout', () => { 
+            req.destroy(); 
+            resolve(null); // Resolve to null on timeout instead of throwing error
+        });
     });
 }
 

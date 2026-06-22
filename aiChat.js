@@ -81,7 +81,7 @@ async function handleAiChat(message, promptText, repliedMessageContext = null) {
             
             // Check specifically for rate limiting (429)
             if (response.status === 429) {
-                return message.reply("i am ratelimited bro... too many people talking to me");
+                return message.reply("i am rate limited wait a few seconds or whatever");
             }
             
             return message.reply("my brain hurts");
