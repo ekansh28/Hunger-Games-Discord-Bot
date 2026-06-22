@@ -752,8 +752,11 @@ client.on('messageCreate', async (message) => {
         
         const isMentioned = message.content.includes(botMention) || message.content.includes(botMentionOld);
         const startsWithEkansh = contentLower.startsWith('ekansh');
+        
+        // Check if the message is a direct reply to the bot
+        const isReplyToBot = message.reference && message.mentions.repliedUser && message.mentions.repliedUser.id === client.user.id;
 
-        if (isMentioned || startsWithEkansh) {
+        if (isMentioned || startsWithEkansh || isReplyToBot) {
             // Strip the mention/prefix for the prompt
             let promptText = message.content
                 .replace(new RegExp(`${botMention}\\s*`), '')
