@@ -265,9 +265,9 @@ Reply STRICTLY with a valid JSON object matching this schema:
     messages.push({ role: "user", content: promptText });
 
     try {
-        let response;
+        // google/gemini-2.0-flash-001 — cheapest + most instruction-efficient model on OpenRouter
         const openRouterPayload = {
-            model: "meta-llama/llama-3.3-70b-instruct",
+            model: "google/gemini-2.0-flash-001",
             messages: messages,
             max_tokens: 150,
             temperature: 0.9,
@@ -281,6 +281,8 @@ Reply STRICTLY with a valid JSON object matching this schema:
             temperature: 0.9,
             top_p: 0.9,
         };
+
+        let response;
 
         if (OPENROUTER_API_KEY) {
             response = await fetch("https://openrouter.ai/api/v1/chat/completions", {

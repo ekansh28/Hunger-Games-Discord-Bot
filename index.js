@@ -12,6 +12,7 @@ const LastFm = require('./utils/lastfm');
 const path = require('path');
 const { handleGeoGuesser, handleGgLeaderboard, handleGgSettings, populateCache } = require('./geoguesser');
 const { handleAiChat } = require('./aiChat');
+const { handleImpersonate } = require('./impersonate');
 const CommandManager = require('./utils/commandManager');
 
 const HG_ELIM_ROLE_ID = '1486781924671492266';
@@ -534,6 +535,59 @@ IMPORTANT: You MUST wrap every artist name you mention in **double asterisks** t
     // ── =gs ───────────────────────────────────────────────────────────────────
     if (contentLower === '=gs' || contentLower === '=ggsettings') {
         await handleGgSettings(message);
+        return;
+    }
+
+    // ── =8ball ────────────────────────────────────────────────────────────────────
+    if (contentLower.startsWith('=8ball') || contentLower.startsWith('=eightball')) {
+        const question = message.content.replace(/^=8ball|^=eightball/i, '').trim();
+        if (!question) return message.reply('ask something');
+
+        // Weighted pool: mostly chaos, some yes, some no
+        const responses = [
+            // Definitive yes (rare)
+            { text: 'yeah probably', weight: 3 },
+            { text: 'unfortunately yes', weight: 3 },
+            { text: 'yes and i hate it for you', weight: 2 },
+
+            // Definitive no (rare)
+            { text: 'no lmao', weight: 3 },
+            { text: 'absolutely not', weight: 3 },
+            { text: 'not in this lifetime', weight: 2 },
+
+            // Chaos / unhinged (common)
+            { text: 'bro asked the ball', weight: 5 },
+            { text: 'maybe if you werent so annoying', weight: 5 },
+            { text: 'the answer is buried under my trauma', weight: 5 },
+            { text: 'signs point to who cares', weight: 5 },
+            { text: 'ask again after i take my meds', weight: 5 },
+            { text: 'my psychic abilities are offline rn', weight: 4 },
+            { text: 'idk im not your therapist', weight: 4 },
+            { text: 'skill issue tbh', weight: 4 },
+            { text: 'the universe said cope', weight: 4 },
+            { text: 'that question gave me a headache', weight: 3 },
+            { text: 'i physically cannot answer this without screaming', weight: 3 },
+            { text: 'reply hazy, try not asking stupid questions', weight: 3 },
+            { text: 'this question is beneath me', weight: 3 },
+            { text: 'concentrate and ask again when you have better questions', weight: 2 },
+            { text: 'yes but youll regret it', weight: 3 },
+            { text: 'no but do it anyway', weight: 3 }
+        ];
+
+        const totalWeight = responses.reduce((sum, r) => sum + r.weight, 0);
+        let rand = Math.random() * totalWeight;
+        let chosen = responses[responses.length - 1].text;
+        for (const r of responses) {
+            rand -= r.weight;
+            if (rand <= 0) { chosen = r.text; break; }
+        }
+
+        return message.reply(chosen);
+    }
+
+    // ── =impersonate ────────────────────────────────────────────────────────────
+    if (contentLower.startsWith('=impersonate')) {
+        await handleImpersonate(message);
         return;
     }
 

@@ -3,52 +3,108 @@ const { EmbedBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require('dis
 async function handleHelpCommand(message) {
     const pages = {
         'home': new EmbedBuilder()
-            .setTitle('📖 Bot Command Reference')
-            .setColor('#FFD700')
-            .setDescription('Welcome to the help menu! Please select a category from the dropdown below to view commands.\n\nAll prefix commands use `=`. Slash commands use `/`.'),
+            .setTitle('Bot Command Reference')
+            .setColor('#2b2d31')
+            .setDescription('Select a category from the dropdown below.\n\nAll prefix commands use `=`. Slash commands use `/`.'),
+
         'games': new EmbedBuilder()
-            .setTitle('🎮 Games')
-            .setColor('#FFD700')
+            .setTitle('Games')
+            .setColor('#2b2d31')
             .addFields(
-                { name: 'Hunger Games (`=play`)', value: '`=play` -- Open a game lobby *(authorized only)*\n`=cancel` -- Cancel the current game\n`=kill <@user>` -- Eliminate a player' },
-                { name: 'Ban Roulette (`/br`)', value: '`/br` -- Start a Ban Roulette lobby\n`/brcancel` -- Cancel the lobby' },
-                { name: 'GeoGuesser (`=gg`)', value: '`=gg` or `=geoguesser` -- Guess the country from a Google Street View image in 30 seconds!' }
+                {
+                    name: 'Hunger Games',
+                    value: '`=play` — Open a game lobby *(authorized only)*\n`=cancel` — Cancel the current game\n`=kill <@user>` — Eliminate a player'
+                },
+                {
+                    name: 'Ban Roulette',
+                    value: '`/br` — Start a Ban Roulette lobby\n`/brcancel` — Cancel the lobby'
+                },
+                {
+                    name: 'GeoGuesser',
+                    value: '`=gg` / `=geoguesser` — Guess the country from a Street View image. 30 seconds, hints reveal over time, typos forgiven.\n`=gglb` / `=ggleaderboard` — GeoGuesser leaderboard\n`=gs` / `=ggsettings` — Tweak Street View settings *(admin only)*'
+                }
             ),
+
         'fun': new EmbedBuilder()
-            .setTitle('🎉 Fun & Extras')
-            .setColor('#FFD700')
+            .setTitle('Fun & Extras')
+            .setColor('#2b2d31')
             .addFields(
-                { name: 'Last.fm', value: '`=setlastfm <user>` -- Link your account\n`=nichemeter` -- How niche is your music taste?\n`=nb @user` -- Niche battle against someone\n`=pr @user` -- Roast their music taste' },
-                { name: 'Other', value: '`=boob` -- Get your totally accurate boob size\n`=edit` -- Image editor tools\n`@Bot` -- Chat with the chaotic AI' }
+                {
+                    name: 'AI',
+                    value: '`@Bot <message>` — Chat with the bot\n`=impersonate <@user>` — Generate a message pretending to be someone, posted via webhook\n`=8ball <question>` — Ask the ball something'
+                },
+                {
+                    name: 'Last.fm',
+                    value: '`=setlastfm <user>` — Link your Last.fm account\n`=nichemeter` — How niche is your taste?\n`=nb @user` — Niche battle\n`=pr @user` — Roast their taste'
+                },
+                {
+                    name: 'Other',
+                    value: '`=boob` — Accurate boob size measurement\n`=pp` — Accurate pp size measurement\n`=edit` — Image editor tools\n`=p` / `=pt` — Pirate translator'
+                }
             ),
+
         'virus': new EmbedBuilder()
-            .setTitle('🦠 Custom Viruses')
-            .setColor('#FFD700')
+            .setTitle('Custom Viruses')
+            .setColor('#2b2d31')
             .addFields(
-                { name: 'Create & Manage', value: '`=virus create <Name> <Color>` -- Create a new virus\n`=virus rename <Name>`\n`=virus color <Color>`\n`=virus icon <Emoji>`\n`=virus delete` -- Eradicate your virus' },
-                { name: 'Spread & Cure', value: '`=infect` -- Infect yourself\n`=cure [@user|all]` -- Cure a user\n`.bump` -- Cure yourself\n**Spreading:** Ping/Reply to others to infect them with your virus!' },
-                { name: 'Stats', value: '`=virus top` -- Deadliest viruses leaderboard\n`=infectioninfo` -- Outbreak stats\n`=infectiontree` -- Lineage tree' }
+                {
+                    name: 'Create & Manage',
+                    value: '`=virus create <Name> <Color>` — Create your virus\n`=virus rename <Name>` — Rename it\n`=virus color <Color>` — Change color\n`=virus icon <Emoji>` — Set icon\n`=virus delete` / `=virus eradicate` — Destroy your virus and free up the role slot'
+                },
+                {
+                    name: 'Spread & Cure',
+                    value: '`=infect` — Infect yourself\n`=cure [@user|all]` — Cure someone\n`.bump` — Cure yourself\n**Spreading:** Ping or reply to others to spread your virus'
+                },
+                {
+                    name: 'Stats',
+                    value: '`=virus top` — Deadliest viruses leaderboard\n`=infectioninfo` — Server outbreak stats\n`=infectiontree` — Infection lineage tree'
+                }
             ),
+
         'stats': new EmbedBuilder()
-            .setTitle('📊 Stats & Leaderboards')
-            .setColor('#FFD700')
+            .setTitle('Stats & Leaderboards')
+            .setColor('#2b2d31')
             .addFields(
-                { name: 'User Stats', value: '`=stats [@user]` or `/stats` -- View word usage stats' },
-                { name: 'Leaderboards', value: '`=leaderboard [word]` or `/leaderboard` -- Top users for a tracked word' }
+                {
+                    name: 'User Stats',
+                    value: '`=stats [@user]` / `/stats` — View word usage stats for a user'
+                },
+                {
+                    name: 'Leaderboards',
+                    value: '`=leaderboard [word]` / `/leaderboard` — Top users for a tracked word\n`=gglb` — GeoGuesser wins leaderboard'
+                }
             ),
+
         'music': new EmbedBuilder()
-            .setTitle('🎵 Music')
-            .setColor('#FFD700')
+            .setTitle('Music')
+            .setColor('#2b2d31')
             .addFields(
-                { name: 'Playback', value: '`/play` -- Play a song\n`/skip`, `/pause`, `/resume`, `/stop` -- Controls\n`/queue` -- View queue' }
+                {
+                    name: 'Playback',
+                    value: '`/play` — Play a song\n`/skip` — Skip current track\n`/pause` / `/resume` — Pause or resume\n`/stop` — Stop playback\n`/queue` — View the queue'
+                }
             ),
+
         'admin': new EmbedBuilder()
-            .setTitle('🔧 Admin & Other')
-            .setColor('#FFD700')
+            .setTitle('Admin & Settings')
+            .setColor('#2b2d31')
             .addFields(
-                { name: 'Permissions', value: '`=addp <@user|@role>` -- Authorize to host games\n`=removep <@user|@role>` -- Remove auth' },
-                { name: 'Bot Restrictions (Admin Only)', value: '`=banuser <@user>` -- Ban a user from using the bot\n`=unbanuser <@user>` -- Unban a user\n`=disablechannel` -- Mute the bot in current channel\n`=enablechannel` -- Unmute bot in channel\n`=disablecmd <cmd>` -- Disable a specific command\n`=enablecmd <cmd>` -- Re-enable a command' },
-                { name: 'Other', value: '`=test` -- Debug\n`=resetdb` -- Wipe the database *(admin only)*\n`=p` or `=pt` -- Pirate Translator API' }
+                {
+                    name: 'Game Permissions',
+                    value: '`=addp <@user|@role>` — Authorize to host games\n`=removep <@user|@role>` — Remove auth'
+                },
+                {
+                    name: 'Bot Restrictions',
+                    value: '`=banuser <@user>` — Ban a user from the bot\n`=unbanuser <@user>` — Unban a user\n`=disablechannel` — Disable bot in current channel\n`=enablechannel` — Re-enable bot in channel\n`=disablecmd <cmd>` — Disable a specific command here\n`=enablecmd <cmd>` — Re-enable a command here'
+                },
+                {
+                    name: 'GeoGuesser Settings',
+                    value: '`=gs` / `=ggsettings` — Interactive Street View settings panel with live preview. Locks `=gg` until saved or cancelled.\n**Settings:** Aspect ratio, FOV (40–120), random offset, search radius'
+                },
+                {
+                    name: 'Other',
+                    value: '`=resetdb` — Wipe the stat database *(admin only)*\n`=test` — Debug ping'
+                }
             )
     };
 
@@ -56,13 +112,13 @@ async function handleHelpCommand(message) {
         .setCustomId('help_menu')
         .setPlaceholder('Select a category...')
         .addOptions([
-            { label: 'Home', value: 'home', emoji: '🏠', description: 'Return to the main menu' },
-            { label: 'Games', value: 'games', emoji: '🎮', description: 'Hunger Games, Ban Roulette, GeoGuesser' },
-            { label: 'Fun & Extras', value: 'fun', emoji: '🎉', description: 'Last.fm roasting, image tools, AI chat' },
-            { label: 'Custom Viruses', value: 'virus', emoji: '🦠', description: 'Create and spread your own virus' },
-            { label: 'Stats & Leaderboards', value: 'stats', emoji: '📊', description: 'Word tracking stats' },
-            { label: 'Music', value: 'music', emoji: '🎵', description: 'Music playback commands' },
-            { label: 'Admin', value: 'admin', emoji: '🔧', description: 'Permissions and settings' }
+            { label: 'Home', value: 'home', description: 'Return to the main menu' },
+            { label: 'Games', value: 'games', description: 'Hunger Games, Ban Roulette, GeoGuesser' },
+            { label: 'Fun & Extras', value: 'fun', description: 'AI chat, impersonate, 8ball, Last.fm' },
+            { label: 'Custom Viruses', value: 'virus', description: 'Create and spread your own virus' },
+            { label: 'Stats & Leaderboards', value: 'stats', description: 'Word tracking and GeoGuesser stats' },
+            { label: 'Music', value: 'music', description: 'Music playback commands' },
+            { label: 'Admin & Settings', value: 'admin', description: 'Permissions, restrictions, and settings' }
         ]);
 
     const row = new ActionRowBuilder().addComponents(selectMenu);

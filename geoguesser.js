@@ -97,12 +97,20 @@ async function populateCache() {
 
 
 async function getRandomGoogleLocation() {
-    const uniqueCountries = [...new Set(cities.map(c => c.country))];
+    // Group cities by country so each country has equal probability
+    const countryMap = {};
+    for (const c of cities) {
+        if (!countryMap[c.country]) countryMap[c.country] = [];
+        countryMap[c.country].push(c);
+    }
+    const uniqueCountries = Object.keys(countryMap);
 
     for (let attempt = 0; attempt < 5; attempt++) {
+        // Pick a random country (equal weight per country)
         const randomCountry = uniqueCountries[Math.floor(Math.random() * uniqueCountries.length)];
-        const countryCities = cities.filter(c => c.country === randomCountry);
+        const countryCities = countryMap[randomCountry];
         const city = countryCities[Math.floor(Math.random() * countryCities.length)];
+
         // Wider randomization to escape the capital city center based on settings
         const latOffset = (Math.random() - 0.5) * ggSettings.offset;
         const lonOffset = (Math.random() - 0.5) * ggSettings.offset;
