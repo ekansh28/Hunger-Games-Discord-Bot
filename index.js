@@ -196,6 +196,14 @@ client.on('messageCreate', async (message) => {
         }
 
         if (cmdName) {
+            // Global Command Rate Limiting (3 seconds)
+            if (message.author.id !== process.env.AUTHORIZED_USER_ID) {
+                if (CommandManager.isOnGlobalCooldown(message.author.id)) {
+                    return; // Silently drop to prevent spam
+                }
+                CommandManager.setGlobalCooldown(message.author.id);
+            }
+
             if (CommandManager.isCommandDisabled(message.channel.id, cmdName)) {
                 return message.reply(`The \`=${cmdName}\` command is currently disabled in this channel.`);
             }

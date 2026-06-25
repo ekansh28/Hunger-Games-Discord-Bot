@@ -118,7 +118,21 @@ function enableCommand(channelId, commandName) {
 // Initialize
 loadConfig();
 
+const globalCooldowns = new Map();
+const COOLDOWN_MS = 3000;
+
+function isOnGlobalCooldown(userId) {
+    if (!globalCooldowns.has(userId)) return false;
+    const last = globalCooldowns.get(userId);
+    return (Date.now() - last) < COOLDOWN_MS;
+}
+
+function setGlobalCooldown(userId) {
+    globalCooldowns.set(userId, Date.now());
+}
+
 module.exports = {
+    loadConfig,
     isUserBanned,
     isChannelDisabled,
     isCommandDisabled,
@@ -127,5 +141,7 @@ module.exports = {
     disableChannel,
     enableChannel,
     disableCommand,
-    enableCommand
+    enableCommand,
+    isOnGlobalCooldown,
+    setGlobalCooldown
 };

@@ -31,6 +31,31 @@ function saveGgSettings() {
     }
 }
 
+let configuringUserId = null;
+
+// Levenshtein distance for typo forgiveness
+function levenshtein(a, b) {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+    return matrix[b.length][a.length];
+}
+
 const countryAliases = {
     'usa': 'united states',
     'us': 'united states',
@@ -103,6 +128,10 @@ async function getRandomGoogleLocation() {
 }
 
 async function handleGeoGuesser(message) {
+    if (configuringUserId) {
+        return message.reply(`GeoGuesser is currently locked because <@${configuringUserId}> is configuring the settings. Wait for them to finish!`);
+    }
+
     const channelId = message.channel.id;
 
     if (activeGames.has(channelId)) {
@@ -200,8 +229,11 @@ async function handleGeoGuesser(message) {
             normalizedGuess = countryAliases[guess];
         }
 
-        // Exact match
-        if (normalizedGuess === targetCountry) {
+        // Allow typos: 1 mistake for < 6 chars, 2 mistakes for >= 6 chars
+        const dist = levenshtein(normalizedGuess, targetCountry);
+        const maxDist = targetCountry.length < 6 ? 1 : 2;
+
+        if (dist <= maxDist) {
             clearInterval(timerInterval);
             collector.stop('winner');
             activeGames.delete(channelId);
@@ -243,14 +275,14 @@ async function handleGeoGuesser(message) {
 async function handleGgLeaderboard(message) {
     const lb = await Stats.getGgLeaderboard(message.guild?.id, 10);
     const embed = new EmbedBuilder()
-        .setTitle('🌍 GeoGuesser Leaderboard')
+        .setTitle('GeoGuesser Leaderboard')
         .setColor('#0099ff')
         .setTimestamp();
     if (lb.length === 0) {
         embed.setDescription('No GeoGuesser wins recorded yet. Play with `=gg`!');
     } else {
         const desc = lb.map((entry, idx) => {
-            const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `**${idx + 1}.**`;
+            const medal = `**${idx + 1}.**`;
             return `${medal} <@${entry.userId}> — **${entry.count}** win${entry.count === 1 ? '' : 's'}`;
         }).join('\n');
         embed.setDescription(desc);
@@ -259,12 +291,12 @@ async function handleGgLeaderboard(message) {
 }
 
 // Helper to generate the preview URL based on current settings
-function getPreviewUrl() {
+function getPreviewUrl(settings) {
     // We'll use Paris (Eiffel Tower) as the static preview location
     const previewLat = 48.8584;
     const previewLon = 2.2945;
-    const sizeStr = ggSettings.aspectRatio === '16:9' ? '640x360' : '640x640';
-    return `https://maps.googleapis.com/maps/api/streetview?size=${sizeStr}&location=${previewLat},${previewLon}&heading=165&pitch=0&fov=${ggSettings.fov}&key=${GOOGLE_API_KEY}`;
+    const sizeStr = settings.aspectRatio === '16:9' ? '640x360' : '640x640';
+    return `https://maps.googleapis.com/maps/api/streetview?size=${sizeStr}&location=${previewLat},${previewLon}&heading=165&pitch=0&fov=${settings.fov}&key=${GOOGLE_API_KEY}`;
 }
 
 async function handleGgSettings(message) {
@@ -272,33 +304,45 @@ async function handleGgSettings(message) {
         return message.reply("You are not authorized to use this command.");
     }
 
+    if (configuringUserId && configuringUserId !== message.author.id) {
+        return message.reply(`Settings are currently locked by <@${configuringUserId}>.`);
+    }
+
+    configuringUserId = message.author.id;
+    let draftSettings = { ...ggSettings };
+
     function buildEmbed() {
         return new EmbedBuilder()
-            .setTitle('🌍 GeoGuesser Settings')
-            .setDescription('Tweak the settings below. The preview image updates in real-time!\n**Preview Location:** Paris, France')
+            .setTitle('GeoGuesser Settings [DRAFT MODE]')
+            .setDescription('Tweak the settings below. Games are locked until you Save or Cancel!\n**Preview Location:** Paris, France')
             .setColor('#2b2d31')
             .addFields(
-                { name: 'Aspect Ratio', value: ggSettings.aspectRatio, inline: true },
-                { name: 'Field of View (FOV)', value: `${ggSettings.fov}°`, inline: true },
-                { name: 'Random Offset', value: `±${ggSettings.offset}°`, inline: true },
-                { name: 'Search Radius', value: `${ggSettings.radius / 1000}km`, inline: true }
+                { name: 'Aspect Ratio', value: draftSettings.aspectRatio, inline: true },
+                { name: 'Field of View (FOV)', value: `${draftSettings.fov}°`, inline: true },
+                { name: 'Random Offset', value: `±${draftSettings.offset}°`, inline: true },
+                { name: 'Search Radius', value: `${draftSettings.radius / 1000}km`, inline: true }
             )
-            .setImage(getPreviewUrl() + `&_ts=${Date.now()}`); // Cache bust
+            .setImage(getPreviewUrl(draftSettings) + `&_ts=${Date.now()}`); // Cache bust
     }
 
     function buildRows() {
         const row1 = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('ggs_ratio').setLabel('Toggle Aspect Ratio').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('ggs_fov_down').setLabel('FOV -10').setStyle(ButtonStyle.Secondary).setDisabled(ggSettings.fov <= 40),
-            new ButtonBuilder().setCustomId('ggs_fov_up').setLabel('FOV +10').setStyle(ButtonStyle.Secondary).setDisabled(ggSettings.fov >= 120)
+            new ButtonBuilder().setCustomId('ggs_fov_down').setLabel('FOV -10').setStyle(ButtonStyle.Secondary).setDisabled(draftSettings.fov <= 40),
+            new ButtonBuilder().setCustomId('ggs_fov_up').setLabel('FOV +10').setStyle(ButtonStyle.Secondary).setDisabled(draftSettings.fov >= 120)
         );
         const row2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('ggs_offset_down').setLabel('Offset -0.5').setStyle(ButtonStyle.Secondary).setDisabled(ggSettings.offset <= 0),
-            new ButtonBuilder().setCustomId('ggs_offset_up').setLabel('Offset +0.5').setStyle(ButtonStyle.Secondary).setDisabled(ggSettings.offset >= 5.0),
-            new ButtonBuilder().setCustomId('ggs_radius_down').setLabel('Radius -5km').setStyle(ButtonStyle.Secondary).setDisabled(ggSettings.radius <= 5000),
-            new ButtonBuilder().setCustomId('ggs_radius_up').setLabel('Radius +5km').setStyle(ButtonStyle.Secondary).setDisabled(ggSettings.radius >= 50000)
+            new ButtonBuilder().setCustomId('ggs_offset_down').setLabel('Offset -0.5').setStyle(ButtonStyle.Secondary).setDisabled(draftSettings.offset <= 0),
+            new ButtonBuilder().setCustomId('ggs_offset_up').setLabel('Offset +0.5').setStyle(ButtonStyle.Secondary).setDisabled(draftSettings.offset >= 5.0),
+            new ButtonBuilder().setCustomId('ggs_radius_down').setLabel('Radius -5km').setStyle(ButtonStyle.Secondary).setDisabled(draftSettings.radius <= 5000),
+            new ButtonBuilder().setCustomId('ggs_radius_up').setLabel('Radius +5km').setStyle(ButtonStyle.Secondary).setDisabled(draftSettings.radius >= 50000)
         );
-        return [row1, row2];
+        const row3 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('ggs_save').setLabel('Save & Close').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('ggs_revert').setLabel('Revert to Default').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('ggs_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+        );
+        return [row1, row2, row3];
     }
 
     const msg = await message.channel.send({ embeds: [buildEmbed()], components: buildRows() });
@@ -312,35 +356,51 @@ async function handleGgSettings(message) {
 
         switch (i.customId) {
             case 'ggs_ratio':
-                ggSettings.aspectRatio = ggSettings.aspectRatio === '16:9' ? '1:1' : '16:9';
+                draftSettings.aspectRatio = draftSettings.aspectRatio === '16:9' ? '1:1' : '16:9';
                 break;
             case 'ggs_fov_down':
-                ggSettings.fov = Math.max(40, ggSettings.fov - 10);
+                draftSettings.fov = Math.max(40, draftSettings.fov - 10);
                 break;
             case 'ggs_fov_up':
-                ggSettings.fov = Math.min(120, ggSettings.fov + 10);
+                draftSettings.fov = Math.min(120, draftSettings.fov + 10);
                 break;
             case 'ggs_offset_down':
-                ggSettings.offset = Math.max(0, ggSettings.offset - 0.5);
+                draftSettings.offset = Math.max(0, draftSettings.offset - 0.5);
                 break;
             case 'ggs_offset_up':
-                ggSettings.offset = Math.min(5.0, ggSettings.offset + 0.5);
+                draftSettings.offset = Math.min(5.0, draftSettings.offset + 0.5);
                 break;
             case 'ggs_radius_down':
-                ggSettings.radius = Math.max(5000, ggSettings.radius - 5000);
+                draftSettings.radius = Math.max(5000, draftSettings.radius - 5000);
                 break;
             case 'ggs_radius_up':
-                ggSettings.radius = Math.min(50000, ggSettings.radius + 5000);
+                draftSettings.radius = Math.min(50000, draftSettings.radius + 5000);
                 break;
+            case 'ggs_save':
+                ggSettings = { ...draftSettings };
+                saveGgSettings();
+                configuringUserId = null;
+                collector.stop('saved');
+                await i.update({ content: 'Settings saved and GeoGuesser is unlocked!', embeds: [buildEmbed()], components: [] });
+                return;
+            case 'ggs_revert':
+                draftSettings = { aspectRatio: '16:9', fov: 110, offset: 1.5, radius: 25000 };
+                break;
+            case 'ggs_cancel':
+                configuringUserId = null;
+                collector.stop('cancelled');
+                await i.update({ content: 'Configuration cancelled.', embeds: [], components: [] });
+                return;
         }
-
-        saveGgSettings();
 
         await i.update({ embeds: [buildEmbed()], components: buildRows() });
     });
 
-    collector.on('end', () => {
-        msg.edit({ components: [] }).catch(() => null);
+    collector.on('end', (collected, reason) => {
+        if (reason !== 'saved' && reason !== 'cancelled') {
+            configuringUserId = null;
+            msg.edit({ content: 'Configuration timed out. Draft discarded.', components: [] }).catch(() => null);
+        }
     });
 }
 
