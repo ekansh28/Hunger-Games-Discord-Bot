@@ -145,19 +145,40 @@ async function handleGeoGuesser(message) {
         files: [attachment] 
     });
 
-    const hintStr = location.country.split('').map(char => {
-        if (char === ' ') return '   ';
-        if (char.match(/[a-zA-Z]/)) return '**\\_**';
-        return char;
-    }).join(' ');
+    const countryChars = location.country.split('');
+    const letterIndices = [];
+    for (let i = 0; i < countryChars.length; i++) {
+        if (countryChars[i].match(/[a-zA-Z]/)) letterIndices.push(i);
+    }
+    const maxReveals = Math.ceil(letterIndices.length * 0.6); // Reveal up to 60% of the letters
+    const revealedIndices = new Set();
 
     let timeLeft = 30;
     const timerInterval = setInterval(() => {
         timeLeft--;
         if (timeLeft > 0) {
+            // Skribbl.io style: random slow reveals after 25s
+            if (timeLeft <= 25 && revealedIndices.size < maxReveals) {
+                // ~25% chance per second to reveal a letter, makes it unpredictable
+                if (Math.random() < 0.25) {
+                    const unrevealed = letterIndices.filter(idx => !revealedIndices.has(idx));
+                    if (unrevealed.length > 0) {
+                        const pick = unrevealed[Math.floor(Math.random() * unrevealed.length)];
+                        revealedIndices.add(pick);
+                    }
+                }
+            }
+
+            const dynamicHint = countryChars.map((char, idx) => {
+                if (char === ' ') return '   ';
+                if (!char.match(/[a-zA-Z]/)) return char;
+                if (revealedIndices.has(idx)) return `**${char}**`;
+                return '**\\_**';
+            }).join(' ');
+
             let contentText = `Guess the country`;
-            if (timeLeft <= 15) {
-                contentText += `\n**Hint:** ${hintStr}`;
+            if (timeLeft <= 25) {
+                contentText += `\n**Hint:** ${dynamicHint}`;
             }
             contentText += `\n-# Time remaining : ${timeLeft}s`;
             
