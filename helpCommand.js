@@ -31,7 +31,7 @@ async function handleHelpCommand(message) {
             .addFields(
                 {
                     name: 'AI',
-                    value: '`@Bot <message>` — Chat with the bot\n`=impersonate <@user>` — Generate a message pretending to be someone, posted via webhook\n`=8ball <question>` — Ask the ball something'
+                    value: '`@Bot <message>` — Chat with the bot\n`=impersonate <@user>` — Generate a message pretending to be someone, posted via webhook\n`=psychoanalyze [@user]` / `=psycho [@user]` — Get a brutal fake psychological profile based on their messages\n`=8ball <question>` — Ask the ball something'
                 },
                 {
                     name: 'Last.fm',
