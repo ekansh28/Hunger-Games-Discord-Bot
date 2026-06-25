@@ -19,11 +19,26 @@ async function handlePsychoanalyze(message) {
 
     let recentMessages = [];
     try {
-        const fetched = await message.channel.messages.fetch({ limit: 100 });
-        recentMessages = fetched
-            .filter(m => m.author.id === target.id && m.content && m.content.length > 1 && !m.content.startsWith('='))
-            .map(m => m.content)
-            .slice(0, 50);
+        let lastId;
+        let fetchedCount = 0;
+        
+        while (recentMessages.length < 50 && fetchedCount < 1000) {
+            const options = { limit: 100 };
+            if (lastId) options.before = lastId;
+            
+            const fetched = await message.channel.messages.fetch(options);
+            if (fetched.size === 0) break;
+            
+            const filtered = fetched
+                .filter(m => m.author.id === target.id && m.content && m.content.length > 1 && !m.content.startsWith('='))
+                .map(m => m.content);
+                
+            recentMessages.push(...filtered);
+            lastId = fetched.last().id;
+            fetchedCount += fetched.size;
+        }
+        
+        recentMessages = recentMessages.slice(0, 50);
     } catch (e) {
         console.error('[Psychoanalyze] Failed to fetch messages:', e);
     }

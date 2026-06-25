@@ -61,14 +61,29 @@ async function handleImpersonate(message) {
     }
     impersonateCooldowns.set(message.author.id, now);
 
-    // Fetch recent messages from the target user
+    // Fetch recent messages from the target user (search up to 1000 recent channel messages)
     let recentMessages = [];
     try {
-        const fetched = await message.channel.messages.fetch({ limit: 100 });
-        recentMessages = fetched
-            .filter(m => m.author.id === target.id && m.content && m.content.length > 1 && !m.content.startsWith('='))
-            .map(m => m.content)
-            .slice(0, 25);
+        let lastId;
+        let fetchedCount = 0;
+        
+        while (recentMessages.length < 25 && fetchedCount < 1000) {
+            const options = { limit: 100 };
+            if (lastId) options.before = lastId;
+            
+            const fetched = await message.channel.messages.fetch(options);
+            if (fetched.size === 0) break;
+            
+            const filtered = fetched
+                .filter(m => m.author.id === target.id && m.content && m.content.length > 1 && !m.content.startsWith('='))
+                .map(m => m.content);
+                
+            recentMessages.push(...filtered);
+            lastId = fetched.last().id;
+            fetchedCount += fetched.size;
+        }
+        
+        recentMessages = recentMessages.slice(0, 25);
     } catch (e) {
         console.error('[Impersonate] Failed to fetch messages:', e);
     }
