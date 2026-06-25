@@ -20,6 +20,8 @@ async function callAI(payload) {
         if (!response.ok) {
             const errText = await response.text();
             console.error('[Impersonate] OpenRouter error:', response.status, errText);
+            if (response.status === 429) return null;
+            return null;
         }
     }
 
@@ -88,9 +90,9 @@ Keep each message short and casual, 1 sentence max. Do NOT start either message 
 
     const userPrompt = `Here are ${displayName}'s recent messages:\n${sampleText}\n\nNow write 2 messages as ${displayName}, one per line:`;
 
-    // google/gemini-2.0-flash-001 — cheapest + most instruction-efficient model on OpenRouter
+    // google/gemini-2.0-flash — cheapest + most instruction-efficient model on OpenRouter
     const payload = {
-        model: 'google/gemini-2.0-flash-001',
+        model: 'google/gemini-2.0-flash',
         messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }

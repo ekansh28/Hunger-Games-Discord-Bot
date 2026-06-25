@@ -50,7 +50,7 @@ Be specific. Reference actual things they said. Keep it short and punchy.`;
     const userPrompt = `Patient name: ${displayName}\n\nTheir Discord messages:\n${sampleText}\n\nGenerate the report:`;
 
     const payload = {
-        model: 'google/gemini-2.0-flash-001',
+        model: 'google/gemini-2.0-flash',
         messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
@@ -75,6 +75,9 @@ Be specific. Reference actual things they said. Keep it short and punchy.`;
             if (!response.ok) {
                 const errText = await response.text();
                 console.error('[Psychoanalyze] OpenRouter error:', response.status, errText);
+                // Body consumed — stop here, don't fall through to json()
+                if (response.status === 429) return;
+                return message.reply('api failed, try again');
             }
         }
 

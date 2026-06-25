@@ -265,9 +265,9 @@ Reply STRICTLY with a valid JSON object matching this schema:
     messages.push({ role: "user", content: promptText });
 
     try {
-        // google/gemini-2.0-flash-001 — cheapest + most instruction-efficient model on OpenRouter
+        // google/gemini-2.0-flash — cheapest + most instruction-efficient model on OpenRouter
         const openRouterPayload = {
-            model: "google/gemini-2.0-flash-001",
+            model: "google/gemini-2.0-flash",
             messages: messages,
             max_tokens: 150,
             temperature: 0.9,
@@ -296,6 +296,8 @@ Reply STRICTLY with a valid JSON object matching this schema:
             if (!response.ok) {
                 const errText = await response.text();
                 console.error('[AiChat] OpenRouter error:', response.status, errText);
+                if (response.status === 429) return;
+                return message.reply('my brain hurts');
             }
         }
 
