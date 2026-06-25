@@ -265,9 +265,9 @@ Reply STRICTLY with a valid JSON object matching this schema:
     messages.push({ role: "user", content: promptText });
 
     try {
-        // google/gemini-2.0-flash — cheapest + most instruction-efficient model on OpenRouter
+        // google/gemini-2.5-flash-lite — cheapest Gemini on OpenRouter
         const openRouterPayload = {
-            model: "google/gemini-2.0-flash",
+            model: "google/gemini-2.5-flash-lite",
             messages: messages,
             max_tokens: 150,
             temperature: 0.9,

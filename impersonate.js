@@ -90,9 +90,9 @@ Keep each message short and casual, 1 sentence max. Do NOT start either message 
 
     const userPrompt = `Here are ${displayName}'s recent messages:\n${sampleText}\n\nNow write 2 messages as ${displayName}, one per line:`;
 
-    // google/gemini-2.0-flash — cheapest + most instruction-efficient model on OpenRouter
+    // google/gemini-2.5-flash-lite — cheapest Gemini on OpenRouter
     const payload = {
-        model: 'google/gemini-2.0-flash',
+        model: 'google/gemini-2.5-flash-lite',
         messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
