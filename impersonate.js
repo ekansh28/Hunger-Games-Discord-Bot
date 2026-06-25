@@ -5,15 +5,46 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const impersonateCooldowns = new Map();
 const COOLDOWN_MS = 15000;
 
-async function handleImpersonate(message) {
-    const target = message.mentions.users.first();
-    if (!target) {
-        return message.reply('mention someone to impersonate.');
+async function callAI(payload) {
+    let response;
+
+    if (OPENROUTER_API_KEY) {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
     }
 
-    if (target.bot) {
-        return message.reply('not impersonating a bot lmao');
+    if ((!response || !response.ok) && GROQ_API_KEY) {
+        response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ...payload, model: 'llama-3.3-70b-versatile', max_completion_tokens: 100 })
+        });
     }
+
+    if (!response || !response.ok) {
+        if (response?.status === 429) return null;
+        return null;
+    }
+
+    const data = await response.json();
+    let result = data.choices?.[0]?.message?.content?.trim();
+    if (!result) return null;
+    return result.replace(/^[""'']|[""'']$/g, '').trim();
+}
+
+async function handleImpersonate(message) {
+    const target = message.mentions.users.first();
+    if (!target) return message.reply('mention someone to impersonate.');
+    if (target.bot) return message.reply('not impersonating a bot lmao');
 
     const now = Date.now();
     const lastUsed = impersonateCooldowns.get(message.author.id) || 0;
@@ -23,7 +54,7 @@ async function handleImpersonate(message) {
     }
     impersonateCooldowns.set(message.author.id, now);
 
-    // Fetch the last 40 messages in the channel and filter to the target user
+    // Fetch recent messages from the target user
     let recentMessages = [];
     try {
         const fetched = await message.channel.messages.fetch({ limit: 100 });
@@ -44,14 +75,13 @@ async function handleImpersonate(message) {
     const sampleText = recentMessages.join('\n');
     const displayName = message.guild?.members.cache.get(target.id)?.displayName || target.username;
 
-    const systemPrompt = `You are mimicking a specific Discord user named "${displayName}". 
+    const systemPrompt = `You are mimicking a specific Discord user named "${displayName}".
 Study their writing style, vocabulary, humor, tone, and quirks from their recent messages.
-Then generate ONE realistic message they might send, in their exact style.
-Do not use quotation marks. Do not explain what you're doing. Just write the message.
-Keep it short — 1 to 2 sentences max, like a casual Discord message.
-Do NOT start with their name. Just write what they'd say.`;
+Generate EXACTLY 2 separate short messages they might send in a row, like a real Discord conversation.
+Format your response as two lines, each line being one message. Nothing else — no labels, no quotes, no explanations.
+Keep each message short and casual, 1 sentence max. Do NOT start either message with their name.`;
 
-    const userPrompt = `Here are ${displayName}'s recent messages:\n${sampleText}\n\nNow write one message as ${displayName}:`;
+    const userPrompt = `Here are ${displayName}'s recent messages:\n${sampleText}\n\nNow write 2 messages as ${displayName}, one per line:`;
 
     // google/gemini-2.0-flash-001 — cheapest + most instruction-efficient model on OpenRouter
     const payload = {
@@ -60,50 +90,23 @@ Do NOT start with their name. Just write what they'd say.`;
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
         ],
-        max_tokens: 100,
+        max_tokens: 150,
         temperature: 1.0,
         top_p: 0.95
     };
 
     try {
-        let response;
+        const raw = await callAI(payload);
+        if (!raw) return message.reply('failed lol');
 
-        if (OPENROUTER_API_KEY) {
-            response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
-        }
+        // Split on newlines, filter empty lines, take up to 3
+        const msgs = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0).slice(0, 3);
+        if (msgs.length === 0) return message.reply('nothing came out');
 
-        if ((!response || !response.ok) && GROQ_API_KEY) {
-            response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${GROQ_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ ...payload, model: 'llama-3.3-70b-versatile', max_completion_tokens: 100 })
-            });
-        }
+        // Ensure at least 2 — if model only gave 1, duplicate with slight variation
+        if (msgs.length === 1) msgs.push(msgs[0]);
 
-        if (!response || !response.ok) {
-            if (response?.status === 429) return;
-            return message.reply('failed lol');
-        }
-
-        const data = await response.json();
-        let result = data.choices?.[0]?.message?.content?.trim();
-
-        if (!result) return message.reply('nothing came out');
-
-        // Strip quotes if model wraps it
-        result = result.replace(/^["""'']|["""'']$/g, '').trim();
-
-        // Send as a webhook to make it look like the actual user
+        // Send as webhook
         try {
             const webhooks = await message.channel.fetchWebhooks();
             let webhook = webhooks.find(w => w.name === 'Impersonator');
@@ -112,18 +115,22 @@ Do NOT start with their name. Just write what they'd say.`;
             }
 
             const member = message.guild?.members.cache.get(target.id);
-            await webhook.send({
-                content: result,
+            const webhookOpts = {
                 username: member?.displayName || target.username,
                 avatarURL: target.displayAvatarURL({ dynamic: true })
-            });
+            };
 
-            // Delete the original command so it looks seamless
+            // Delete command first so it looks seamless
             await message.delete().catch(() => null);
+
+            for (let i = 0; i < msgs.length; i++) {
+                if (i > 0) await new Promise(r => setTimeout(r, 800 + Math.random() * 600)); // natural delay
+                await webhook.send({ ...webhookOpts, content: msgs[i] });
+            }
         } catch (webhookErr) {
-            // No webhook perms — fall back to plaintext
             console.warn('[Impersonate] Webhook failed, falling back:', webhookErr.message);
-            await message.reply(`**${displayName}:** ${result}`);
+            const lines = msgs.map(m => `**${displayName}:** ${m}`).join('\n');
+            await message.reply(lines);
         }
 
     } catch (err) {
