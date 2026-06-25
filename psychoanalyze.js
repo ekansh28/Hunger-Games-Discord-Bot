@@ -57,8 +57,7 @@ Be specific. Reference actual things they said. Keep it short and punchy.`;
         ],
         max_tokens: 300,
         temperature: 1.0,
-        top_p: 0.95,
-        response_format: { type: 'json_object' }
+        top_p: 0.95
     };
 
     try {
@@ -77,7 +76,6 @@ Be specific. Reference actual things they said. Keep it short and punchy.`;
 
         if ((!response || !response.ok) && GROQ_API_KEY) {
             const groqPayload = { ...payload, model: 'llama-3.3-70b-versatile', max_completion_tokens: 300 };
-            delete groqPayload.response_format;
             response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -89,8 +87,10 @@ Be specific. Reference actual things they said. Keep it short and punchy.`;
         }
 
         if (!response || !response.ok) {
+            const errText = response ? await response.text() : 'no response';
+            console.error('[Psychoanalyze] API error:', response?.status, errText);
             if (response?.status === 429) return;
-            return message.reply('my brain broke');
+            return message.reply('api failed, try again');
         }
 
         const data = await response.json();
@@ -99,14 +99,18 @@ Be specific. Reference actual things they said. Keep it short and punchy.`;
 
         let report;
         try {
-            // Strip markdown code fences if model wraps it
-            const cleaned = raw.replace(/^```(?:json)?\n?|\n?```$/g, '').trim();
+            // Strip markdown code fences and find the JSON object
+            let cleaned = raw.replace(/^```(?:json)?\n?|\n?```$/g, '').trim();
+            // Extract JSON object if there's extra text around it
+            const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (jsonMatch) cleaned = jsonMatch[0];
             report = JSON.parse(cleaned);
         } catch (e) {
-            // Fallback: just dump the raw text into the embed
+            console.error('[Psychoanalyze] JSON parse failed:', e.message, '\nRaw:', raw);
+            // Fallback: dump raw text into embed
             const embed = new EmbedBuilder()
                 .setTitle(`Psychological Profile — ${displayName}`)
-                .setDescription(raw)
+                .setDescription(raw.slice(0, 4096))
                 .setColor('#1a1a2e')
                 .setFooter({ text: 'not a real diagnosis. probably.' });
             return message.reply({ embeds: [embed] });
