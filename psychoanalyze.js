@@ -4,9 +4,9 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 const psychoCooldowns = new Map();
-const COOLDOWN_MS = 20000;
+const COOLDOWN_MS = 15000;
 
-async function handlePsychoanalyze(message) {
+async function handlePsychoanalyze(message, globalMessageBuffer) {
     const target = message.mentions.users.first() || message.author;
 
     const now = Date.now();
@@ -19,28 +19,19 @@ async function handlePsychoanalyze(message) {
 
     let recentMessages = [];
     try {
-        let lastId;
-        let fetchedCount = 0;
-        
-        while (recentMessages.length < 50 && fetchedCount < 1000) {
-            const options = { limit: 100 };
-            if (lastId) options.before = lastId;
-            
-            const fetched = await message.channel.messages.fetch(options);
-            if (fetched.size === 0) break;
-            
-            const filtered = fetched
-                .filter(m => m.author.id === target.id && m.content && m.content.length > 1 && !m.content.startsWith('='))
-                .map(m => m.content);
-                
-            recentMessages.push(...filtered);
-            lastId = fetched.last().id;
-            fetchedCount += fetched.size;
+        if (globalMessageBuffer && globalMessageBuffer.length > 0) {
+            recentMessages = globalMessageBuffer
+                .filter(m => m.authorId === target.id && m.content && m.content.length > 1 && !m.content.startsWith('='))
+                .slice(-150)
+                .map(m => {
+                    let text = `[${new Date(m.timestamp).toLocaleTimeString()}] `;
+                    if (m.replyContext) text += `(Replying to: "${m.replyContext}") -> `;
+                    text += `"${m.content}"`;
+                    return text;
+                });
         }
-        
-        recentMessages = recentMessages.slice(0, 50);
     } catch (e) {
-        console.error('[Psychoanalyze] Failed to fetch messages:', e);
+        console.error('[Psychoanalyze] Failed to read from buffer:', e);
     }
 
     if (recentMessages.length < 3) {
@@ -52,15 +43,21 @@ async function handlePsychoanalyze(message) {
     const displayName = message.guild?.members.cache.get(target.id)?.displayName || target.username;
     const sampleText = recentMessages.join('\n');
 
-    const systemPrompt = `You are a fake, brutally honest psychologist writing a short patient report.
-Analyze the Discord messages and respond with EXACTLY this JSON format and nothing else:
+    const systemPrompt = `You are a highly analytical, slightly unhinged internet psychologist writing a clinical patient report based on someone's Discord messages.
+Your goal is to deeply overanalyze their quirks, grammar, obsessions, and topics, turning their casual chat into a severe psychological condition.
+
+DO NOT just tell them to shut up. DO NOT use generic insults. Be creative, dry, and hyper-specific to the exact things they said.
+You are given the time of day and the context of what they are replying to. Use this to make extremely accurate behavioral deductions.
+
+Respond with EXACTLY this JSON format and nothing else. Do not output markdown code blocks. Just the JSON object.
+
+EXAMPLE OUTPUT:
 {
-  "diagnosis": "a fake made-up disorder name (1 line, funny but clinical sounding)",
-  "summary": "2 sentences max. blunt brutal honest summary of their personality based on what they said.",
-  "symptoms": ["symptom 1", "symptom 2", "symptom 3"],
-  "prognosis": "one dark/funny sentence about their future"
-}
-Be specific. Reference actual things they said. Keep it short and punchy.`;
+  "diagnosis": "Chronically Online Avoidance Syndrome",
+  "summary": "This patient exhibits a severe inability to engage with reality, opting instead to respond to serious questions with 'skibidi'. Their late-night posting habits suggest a circadian rhythm permanently altered by TikTok.",
+  "symptoms": ["Uses 'bro' as punctuation", "Responds to emotional vulnerability with 'skill issue'", "Active exclusively between 2AM and 5AM"],
+  "prognosis": "Will likely communicate entirely in hieroglyphs (emojis) within 5 years."
+}`;
 
     const userPrompt = `Patient name: ${displayName}\n\nTheir Discord messages:\n${sampleText}\n\nGenerate the report:`;
 

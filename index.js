@@ -157,7 +157,14 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
             }
         }
     }
+    }
 });
+
+// ==========================================
+// GLOBAL MESSAGE BUFFER (LRU CACHE)
+// ==========================================
+const globalMessageBuffer = [];
+const MAX_GLOBAL_MESSAGES = 10000;
 
 client.on('messageCreate', async (message) => {
     // ── Monkeypatch message.reply for Safety ──────────────────────────────────
@@ -181,6 +188,29 @@ client.on('messageCreate', async (message) => {
             throw err;
         }
     };
+
+    // ── Global Message Caching ────────────────────────────────────────────────
+    if (!message.author.bot) {
+        let replyContext = null;
+        if (message.reference && message.reference.messageId) {
+            const refMsg = globalMessageBuffer.find(m => m.id === message.reference.messageId);
+            if (refMsg) {
+                replyContext = refMsg.content;
+            }
+        }
+        
+        globalMessageBuffer.unshift({
+            id: message.id,
+            authorId: message.author.id,
+            content: message.content,
+            timestamp: new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hour12: true }),
+            replyContext: replyContext
+        });
+        
+        if (globalMessageBuffer.length > MAX_GLOBAL_MESSAGES) {
+            globalMessageBuffer.pop();
+        }
+    }
 
     // ── Command Manager Interception ──────────────────────────────────────────
     if (!message.author.bot) {
@@ -588,13 +618,13 @@ IMPORTANT: You MUST wrap every artist name you mention in **double asterisks** t
 
     // ── =impersonate ────────────────────────────────────────────────────────────
     if (contentLower.startsWith('=impersonate')) {
-        await handleImpersonate(message);
+        await handleImpersonate(message, globalMessageBuffer);
         return;
     }
 
     // ── =psychoanalyze ──────────────────────────────────────────────────────
     if (contentLower.startsWith('=psychoanalyze') || contentLower.startsWith('=psycho')) {
-        await handlePsychoanalyze(message);
+        await handlePsychoanalyze(message, globalMessageBuffer);
         return;
     }
 
