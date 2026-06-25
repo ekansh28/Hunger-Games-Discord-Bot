@@ -293,9 +293,14 @@ Reply STRICTLY with a valid JSON object matching this schema:
                 },
                 body: JSON.stringify(openRouterPayload)
             });
+            if (!response.ok) {
+                const errText = await response.text();
+                console.error('[AiChat] OpenRouter error:', response.status, errText);
+            }
         }
 
-        if ((!response || !response.ok) && GROQ_API_KEY) {
+        // Only fall back to Groq if OpenRouter had a full network failure
+        if (!response && GROQ_API_KEY) {
             if (response) console.warn('[AiChat Generator] OpenRouter failed, falling back to Groq');
             response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                 method: "POST",

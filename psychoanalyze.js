@@ -72,9 +72,14 @@ Be specific. Reference actual things they said. Keep it short and punchy.`;
                 },
                 body: JSON.stringify(payload)
             });
+            if (!response.ok) {
+                const errText = await response.text();
+                console.error('[Psychoanalyze] OpenRouter error:', response.status, errText);
+            }
         }
 
-        if ((!response || !response.ok) && GROQ_API_KEY) {
+        // Only fall back to Groq if OpenRouter had a network failure (no response at all)
+        if (!response && GROQ_API_KEY) {
             const groqPayload = { ...payload, model: 'llama-3.3-70b-versatile', max_completion_tokens: 300 };
             response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                 method: 'POST',

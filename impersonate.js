@@ -17,9 +17,14 @@ async function callAI(payload) {
             },
             body: JSON.stringify(payload)
         });
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error('[Impersonate] OpenRouter error:', response.status, errText);
+        }
     }
 
-    if ((!response || !response.ok) && GROQ_API_KEY) {
+    // Only fall back to Groq on full network failure
+    if (!response && GROQ_API_KEY) {
         response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
