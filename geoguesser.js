@@ -182,14 +182,12 @@ async function handleGeoGuesser(message) {
         files: [attachment] 
     });
 
-    // Build a fixed hint: reveal first and last letter of each word, blank the rest
+    // Build a fixed hint: just show dashes for each letter, keeping spaces/punctuation
     const words = location.country.split(' ');
     const hintStr = words.map(word => {
         if (word.length === 0) return '';
-        if (word.length === 1) return `**${word}**`;
-        return word.split('').map((char, i) => {
+        return word.split('').map(char => {
             if (!char.match(/[a-zA-Z]/)) return char;
-            if (i === 0 || i === word.length - 1) return `**${char}**`;
             return '**\\_**';
         }).join(' ');
     }).join('     ');

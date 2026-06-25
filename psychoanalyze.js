@@ -70,7 +70,6 @@ Be specific. Reference actual things they said. Keep it short and punchy.`;
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
         ],
-        max_tokens: 800,
         temperature: 1.0,
         top_p: 0.95
     };
@@ -98,7 +97,7 @@ Be specific. Reference actual things they said. Keep it short and punchy.`;
 
         // Only fall back to Groq if OpenRouter had a network failure (no response at all)
         if (!response && GROQ_API_KEY) {
-            const groqPayload = { ...payload, model: 'llama-3.3-70b-versatile', max_completion_tokens: 800 };
+            const groqPayload = { ...payload, model: 'llama-3.3-70b-versatile' };
             response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                 method: 'POST',
                 headers: {
