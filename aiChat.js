@@ -1,6 +1,7 @@
 const { pool } = require('./stats');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 // System prompt inspired by the provided finetune dataset
 const SYSTEM_PROMPT_TEMPLATE = `<PERSONA>
@@ -119,7 +120,7 @@ async function saveUserHistory(userId, history) {
 }
 
 async function handleAiChat(message, promptText, repliedMessageContext = null, recentChannelMessages = []) {
-    if (!GROQ_API_KEY) {
+    if (!GROQ_API_KEY && !OPENROUTER_API_KEY) {
         return message.reply("bro im broke i cant afford the api key rn");
     }
 
@@ -178,27 +179,44 @@ Reply STRICTLY with a valid JSON object matching this schema:
             ],
             response_format: { type: "json_object" }
         };
+        
+        const openRouterBody = { ...groqBody, model: "meta-llama/llama-3.1-8b-instruct" }; // Model can vary, let's use standard for openrouter
 
-        const groqReq = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${GROQ_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(groqBody)
-        });
+        let routerReq;
+        if (OPENROUTER_API_KEY) {
+            routerReq = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(openRouterBody)
+            });
+        }
+        
+        if ((!routerReq || !routerReq.ok) && GROQ_API_KEY) {
+            if (routerReq) console.warn('[AiChat Router] OpenRouter failed, falling back to Groq');
+            routerReq = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${GROQ_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(groqBody)
+            });
+        }
 
-        if (groqReq.ok) {
-            const groqData = await groqReq.json();
+        if (routerReq && routerReq.ok) {
+            const groqData = await routerReq.json();
             const routerDecision = JSON.parse(groqData.choices[0].message.content);
             groqMood = routerDecision.mood || groqMood;
             groqTopic = routerDecision.topic_summary || groqTopic;
-            console.log(`[Groq Router] Decided mood: ${groqMood}, Topic: ${groqTopic}`);
+            console.log(`[AiChat Router] Decided mood: ${groqMood}, Topic: ${groqTopic}`);
         } else {
-            console.error('[Groq Router] Failed to fetch from Groq:', await groqReq.text());
+            console.error('[AiChat Router] Failed to fetch:', routerReq ? await routerReq.text() : 'No API key');
         }
     } catch (e) {
-        console.error('[Groq Router] Error:', e);
+        console.error('[AiChat Router] Error:', e);
     }
 
     // ==========================================
@@ -247,31 +265,55 @@ Reply STRICTLY with a valid JSON object matching this schema:
     messages.push({ role: "user", content: promptText });
 
     try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${GROQ_API_KEY}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "llama-3.3-70b-versatile",
-                messages: messages,
-                max_completion_tokens: 150, // Keep responses relatively short
-                temperature: 0.9, // High temp for chaotic behavior
-                top_p: 0.9,
-            })
-        });
+        let response;
+        const openRouterPayload = {
+            model: "meta-llama/llama-3.3-70b-instruct",
+            messages: messages,
+            max_tokens: 150,
+            temperature: 0.9,
+            top_p: 0.9,
+        };
+        
+        const groqPayload = {
+            model: "llama-3.3-70b-versatile",
+            messages: messages,
+            max_completion_tokens: 150,
+            temperature: 0.9,
+            top_p: 0.9,
+        };
 
-        if (!response.ok) {
-            const errorBody = await response.text();
-            console.error('[AiChat] Groq API Error:', response.status, response.statusText, errorBody);
+        if (OPENROUTER_API_KEY) {
+            response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(openRouterPayload)
+            });
+        }
+
+        if ((!response || !response.ok) && GROQ_API_KEY) {
+            if (response) console.warn('[AiChat Generator] OpenRouter failed, falling back to Groq');
+            response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${GROQ_API_KEY}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(groqPayload)
+            });
+        }
+
+        if (!response || !response.ok) {
+            const errorBody = response ? await response.text() : 'No API keys';
+            console.error('[AiChat] API Error:', response?.status, response?.statusText, errorBody);
             
-            // Check specifically for rate limiting (429)
-            if (response.status === 429) {
+            if (response?.status === 429) {
                 return message.reply("i am rate limited becuase using a free model wait a few seconds or whatever");
             }
 
-            if (response.status === 403) {
+            if (response?.status === 403) {
                 try {
                     const errData = JSON.parse(errorBody);
                     return message.reply(`im blocked bro (403): ${errData.error?.message || 'Forbidden'}`);

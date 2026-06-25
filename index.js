@@ -12,6 +12,7 @@ const LastFm = require('./utils/lastfm');
 const path = require('path');
 const { handleGeoGuesser, handleGgLeaderboard, populateCache } = require('./geoguesser');
 const { handleAiChat } = require('./aiChat');
+const CommandManager = require('./utils/commandManager');
 
 const HG_ELIM_ROLE_ID = '1486781924671492266';
 
@@ -178,6 +179,70 @@ client.on('messageCreate', async (message) => {
             throw err;
         }
     };
+
+    // ── Command Manager Interception ──────────────────────────────────────────
+    if (!message.author.bot) {
+        if (CommandManager.isUserBanned(message.author.id)) return;
+
+        const isPrefixCommand = message.content.startsWith('=');
+        let cmdName = null;
+        if (isPrefixCommand) {
+            const match = message.content.match(/^=([a-zA-Z0-9_-]+)/);
+            if (match) cmdName = match[1].toLowerCase();
+        }
+
+        if (cmdName !== 'enablechannel') {
+            if (CommandManager.isChannelDisabled(message.channel.id)) return;
+        }
+
+        if (cmdName) {
+            if (CommandManager.isCommandDisabled(message.channel.id, cmdName)) {
+                return message.reply(`The \`=${cmdName}\` command is currently disabled in this channel.`);
+            }
+            
+            const argsStr = message.content.slice(cmdName.length + 1).trim();
+            const args = argsStr ? argsStr.split(/\s+/) : [];
+            const AUTHORIZED = process.env.AUTHORIZED_USER_ID;
+            
+            if (cmdName === 'banuser') {
+                if (message.author.id !== AUTHORIZED) return message.reply("You do not have permission.");
+                const target = message.mentions.users.first() || (args[0] && await client.users.fetch(args[0]).catch(()=>null));
+                if (!target) return message.reply("Please mention a user or provide an ID.");
+                if (target.id === AUTHORIZED) return message.reply("Cannot ban the bot owner.");
+                CommandManager.banUser(target.id);
+                return message.reply(`✅ Banned **${target.username}** from using the bot.`);
+            }
+            if (cmdName === 'unbanuser') {
+                if (message.author.id !== AUTHORIZED) return message.reply("You do not have permission.");
+                const target = message.mentions.users.first() || (args[0] && await client.users.fetch(args[0]).catch(()=>null));
+                if (!target) return message.reply("Please mention a user or provide an ID.");
+                CommandManager.unbanUser(target.id);
+                return message.reply(`✅ Unbanned **${target.username}**.`);
+            }
+            if (cmdName === 'disablechannel') {
+                if (message.author.id !== AUTHORIZED) return message.reply("You do not have permission.");
+                CommandManager.disableChannel(message.channel.id);
+                return message.reply(`✅ Bot is now disabled in this channel. (Use \`=enablechannel\` to re-enable)`);
+            }
+            if (cmdName === 'enablechannel') {
+                if (message.author.id !== AUTHORIZED) return message.reply("You do not have permission.");
+                CommandManager.enableChannel(message.channel.id);
+                return message.reply(`✅ Bot is now enabled in this channel.`);
+            }
+            if (cmdName === 'disablecmd') {
+                if (message.author.id !== AUTHORIZED) return message.reply("You do not have permission.");
+                if (!args[0]) return message.reply("Usage: \`=disablecmd <command_name>\`");
+                CommandManager.disableCommand(message.channel.id, args[0]);
+                return message.reply(`✅ Command \`=${args[0]}\` is now disabled in this channel.`);
+            }
+            if (cmdName === 'enablecmd') {
+                if (message.author.id !== AUTHORIZED) return message.reply("You do not have permission.");
+                if (!args[0]) return message.reply("Usage: \`=enablecmd <command_name>\`");
+                CommandManager.enableCommand(message.channel.id, args[0]);
+                return message.reply(`✅ Command \`=${args[0]}\` is now enabled in this channel.`);
+            }
+        }
+    }
 
     // ── Infection spreading ───────────────────────────────────────────────────
     if (message.guild && !message.author.bot && message.member && message.mentions.members.size > 0) {

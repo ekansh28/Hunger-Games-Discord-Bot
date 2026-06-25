@@ -12,7 +12,14 @@ async function handleHelpCommand(message) {
             .addFields(
                 { name: 'Hunger Games (`=play`)', value: '`=play` -- Open a game lobby *(authorized only)*\n`=cancel` -- Cancel the current game\n`=kill <@user>` -- Eliminate a player' },
                 { name: 'Ban Roulette (`/br`)', value: '`/br` -- Start a Ban Roulette lobby\n`/brcancel` -- Cancel the lobby' },
-                { name: 'GeoGuesser (`=gg`)', value: '`=gg` or `=geoguesser` -- Guess the country from a Mapillary street view image in 30 seconds!' }
+                { name: 'GeoGuesser (`=gg`)', value: '`=gg` or `=geoguesser` -- Guess the country from a Google Street View image in 30 seconds!' }
+            ),
+        'fun': new EmbedBuilder()
+            .setTitle('🎉 Fun & Extras')
+            .setColor('#FFD700')
+            .addFields(
+                { name: 'Last.fm', value: '`=setlastfm <user>` -- Link your account\n`=nichemeter` -- How niche is your music taste?\n`=nb @user` -- Niche battle against someone\n`=pr @user` -- Roast their music taste' },
+                { name: 'Other', value: '`=boob` -- Get your totally accurate boob size\n`=edit` -- Image editor tools\n`@Bot` -- Chat with the chaotic AI' }
             ),
         'virus': new EmbedBuilder()
             .setTitle('🦠 Custom Viruses')
@@ -40,6 +47,7 @@ async function handleHelpCommand(message) {
             .setColor('#FFD700')
             .addFields(
                 { name: 'Permissions', value: '`=addp <@user|@role>` -- Authorize to host games\n`=removep <@user|@role>` -- Remove auth' },
+                { name: 'Bot Restrictions (Admin Only)', value: '`=banuser <@user>` -- Ban a user from using the bot\n`=unbanuser <@user>` -- Unban a user\n`=disablechannel` -- Mute the bot in current channel\n`=enablechannel` -- Unmute bot in channel\n`=disablecmd <cmd>` -- Disable a specific command\n`=enablecmd <cmd>` -- Re-enable a command' },
                 { name: 'Other', value: '`=test` -- Debug\n`=resetdb` -- Wipe the database *(admin only)*\n`=p` or `=pt` -- Pirate Translator API' }
             )
     };
@@ -50,6 +58,7 @@ async function handleHelpCommand(message) {
         .addOptions([
             { label: 'Home', value: 'home', emoji: '🏠', description: 'Return to the main menu' },
             { label: 'Games', value: 'games', emoji: '🎮', description: 'Hunger Games, Ban Roulette, GeoGuesser' },
+            { label: 'Fun & Extras', value: 'fun', emoji: '🎉', description: 'Last.fm roasting, image tools, AI chat' },
             { label: 'Custom Viruses', value: 'virus', emoji: '🦠', description: 'Create and spread your own virus' },
             { label: 'Stats & Leaderboards', value: 'stats', emoji: '📊', description: 'Word tracking stats' },
             { label: 'Music', value: 'music', emoji: '🎵', description: 'Music playback commands' },

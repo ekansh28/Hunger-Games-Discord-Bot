@@ -3,8 +3,6 @@ const https = require('https');
 const cities = require('./cities.json');
 const Stats = require('./stats');
 const GOOGLE_API_KEY = process.env.GOOGLE_STREETVIEW_API_KEY || 'AIzaSyBtRz5rZio6uqq2UEHT2l-HL-6JEq7r3Bg';
-const MAPILLARY_TOKEN = process.env.MAPILLARY_TOKEN;
-let googleDenied = false; // set to true after first REQUEST_DENIED, use Mapillary going forward
 
 const countryAliases = {
     'usa': 'united states',
@@ -33,9 +31,7 @@ async function populateCache() {
         const targetCacheSize = 5;
         const needed = targetCacheSize - locationCache.length;
         if (needed > 0) {
-            const promises = Array.from({ length: needed }).map(() => 
-                googleDenied ? getRandomMapillaryLocation() : getRandomGoogleLocation()
-            );
+            const promises = Array.from({ length: needed }).map(() => getRandomGoogleLocation());
             const results = await Promise.all(promises);
             for (const loc of results) {
                 if (loc) locationCache.push(loc);
@@ -47,52 +43,6 @@ async function populateCache() {
     isFetchingCache = false;
 }
 
-
-function fetchMapillaryData(url) {
-    return new Promise((resolve, reject) => {
-        const req = https.get(url, { headers: { 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }, timeout: 15000 }, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                try { resolve(JSON.parse(data)); }
-                catch (e) { resolve(null); } // Don't throw parsing errors
-            });
-        }).on('error', (err) => {
-            resolve(null); // Return null on network error to allow retries
-        });
-        req.on('timeout', () => { 
-            req.destroy(); 
-            resolve(null); // Resolve to null on timeout instead of throwing error
-        });
-    });
-}
-
-async function getRandomMapillaryLocation() {
-    const uniqueCountries = [...new Set(cities.map(c => c.country))];
-    for (let attempt = 0; attempt < 5; attempt++) {
-        const randomCountry = uniqueCountries[Math.floor(Math.random() * uniqueCountries.length)];
-        const countryCities = cities.filter(c => c.country === randomCountry);
-        const city = countryCities[Math.floor(Math.random() * countryCities.length)];
-        const latOffset = (Math.random() - 0.5) * 0.05;
-        const lonOffset = (Math.random() - 0.5) * 0.05;
-        const centerLat = city.lat + latOffset;
-        const centerLon = city.lon + lonOffset;
-        const bbox = `${centerLon - 0.005},${centerLat - 0.005},${centerLon + 0.005},${centerLat + 0.005}`;
-        const url = `https://graph.mapillary.com/images?fields=id,thumb_2048_url&bbox=${bbox}&limit=10`;
-        try {
-            const res = await fetchMapillaryData(url);
-            if (res && res.data && res.data.length > 0) {
-                const randomImg = res.data[Math.floor(Math.random() * res.data.length)];
-                if (randomImg.thumb_2048_url) {
-                    return { country: city.country, image_url: randomImg.thumb_2048_url };
-                }
-            }
-        } catch (e) {
-            console.error(`[GeoGuesser] Mapillary fetch error: ${e.message}`);
-        }
-    }
-    return null;
-}
 
 async function getRandomGoogleLocation() {
     const uniqueCountries = [...new Set(cities.map(c => c.country))];
@@ -109,11 +59,6 @@ async function getRandomGoogleLocation() {
         try {
             const metaRes = await fetch(metaUrl);
             const meta = await metaRes.json();
-            if (meta.status === 'REQUEST_DENIED') {
-                console.warn('[GeoGuesser] Google Street View API denied — switching to Mapillary fallback.');
-                googleDenied = true;
-                return await getRandomMapillaryLocation();
-            }
             if (meta.status === 'OK' && meta.location) {
                 const heading = Math.floor(Math.random() * 360);
                 const pitch = Math.floor(Math.random() * 20) - 10;
@@ -146,7 +91,7 @@ async function handleGeoGuesser(message) {
     if (!location) {
         // Cache was empty, fetch dynamically
         loadingMsg = await message.channel.send('Loading a random location from the world...');
-        location = googleDenied ? await getRandomMapillaryLocation() : await getRandomGoogleLocation();
+        location = await getRandomGoogleLocation();
     }
     
     if (!location) {
@@ -162,17 +107,23 @@ async function handleGeoGuesser(message) {
 
     const attachment = new AttachmentBuilder(location.image_url, { name: 'geoguesser.jpg' });
 
-    const embed = new EmbedBuilder()
-        .setTitle('GeoGuesser')
-        .setDescription('Where in the world is this? Type the name of the country in the chat to win!\n\nYou have 30 seconds.')
-        .setImage('attachment://geoguesser.jpg')
-        .setColor('#0099ff')
-        .setFooter({ text: 'GeoGuesser' });
-
     if (loadingMsg) {
         await loadingMsg.delete().catch(() => null);
     }
-    await message.channel.send({ embeds: [embed], files: [attachment] });
+    const gameMsg = await message.channel.send({ 
+        content: "Guess the country\n-# Time remaining : 30s", 
+        files: [attachment] 
+    });
+
+    let timeLeft = 30;
+    const timerInterval = setInterval(() => {
+        timeLeft--;
+        if (timeLeft > 0) {
+            gameMsg.edit({ content: `Guess the country\n-# Time remaining : ${timeLeft}s` }).catch(() => clearInterval(timerInterval));
+        } else {
+            clearInterval(timerInterval);
+        }
+    }, 1000);
 
     // Set up message collector
     const filter = (m) => !m.author.bot;
@@ -188,6 +139,7 @@ async function handleGeoGuesser(message) {
 
         // Exact match
         if (normalizedGuess === targetCountry) {
+            clearInterval(timerInterval);
             collector.stop('winner');
             activeGames.delete(channelId);
 
@@ -211,6 +163,7 @@ async function handleGeoGuesser(message) {
     });
 
     collector.on('end', (collected, reason) => {
+        clearInterval(timerInterval);
         if (reason !== 'winner') {
             activeGames.delete(channelId);
             
