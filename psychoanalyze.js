@@ -1,3 +1,5 @@
+const { EmbedBuilder } = require('discord.js');
+
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
@@ -15,7 +17,6 @@ async function handlePsychoanalyze(message) {
     }
     psychoCooldowns.set(message.author.id, now);
 
-    // Fetch the target's recent messages from the channel
     let recentMessages = [];
     try {
         const fetched = await message.channel.messages.fetch({ limit: 100 });
@@ -36,14 +37,17 @@ async function handlePsychoanalyze(message) {
     const displayName = message.guild?.members.cache.get(target.id)?.displayName || target.username;
     const sampleText = recentMessages.join('\n');
 
-    const systemPrompt = `You are a completely unhinged, brutally honest, fake clinical psychologist writing a patient report.
-Your job is to psychoanalyze someone based only on their Discord messages.
-Write a short fake clinical report (3-5 sentences). Use dry, clinical language mixed with dark humor.
-Be specific and reference what they actually said. Be brutal but funny. No sugarcoating.
-Do NOT use markdown headers. Write it as one flowing paragraph like a real report.
-Do NOT start with "Subject" — use their name.`;
+    const systemPrompt = `You are a fake, brutally honest psychologist writing a short patient report.
+Analyze the Discord messages and respond with EXACTLY this JSON format and nothing else:
+{
+  "diagnosis": "a fake made-up disorder name (1 line, funny but clinical sounding)",
+  "summary": "2 sentences max. blunt brutal honest summary of their personality based on what they said.",
+  "symptoms": ["symptom 1", "symptom 2", "symptom 3"],
+  "prognosis": "one dark/funny sentence about their future"
+}
+Be specific. Reference actual things they said. Keep it short and punchy.`;
 
-    const userPrompt = `The patient's name is ${displayName}. Here are their recent Discord messages:\n\n${sampleText}\n\nWrite the psychological profile:`;
+    const userPrompt = `Patient name: ${displayName}\n\nTheir Discord messages:\n${sampleText}\n\nGenerate the report:`;
 
     const payload = {
         model: 'google/gemini-2.0-flash-001',
@@ -51,9 +55,10 @@ Do NOT start with "Subject" — use their name.`;
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
         ],
-        max_tokens: 250,
+        max_tokens: 300,
         temperature: 1.0,
-        top_p: 0.95
+        top_p: 0.95,
+        response_format: { type: 'json_object' }
     };
 
     try {
@@ -71,13 +76,15 @@ Do NOT start with "Subject" — use their name.`;
         }
 
         if ((!response || !response.ok) && GROQ_API_KEY) {
+            const groqPayload = { ...payload, model: 'llama-3.3-70b-versatile', max_completion_tokens: 300 };
+            delete groqPayload.response_format;
             response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${GROQ_API_KEY}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ ...payload, model: 'llama-3.3-70b-versatile', max_completion_tokens: 250 })
+                body: JSON.stringify(groqPayload)
             });
         }
 
@@ -87,18 +94,46 @@ Do NOT start with "Subject" — use their name.`;
         }
 
         const data = await response.json();
-        let result = data.choices?.[0]?.message?.content?.trim();
-        if (!result) return message.reply('nothing came out');
+        const raw = data.choices?.[0]?.message?.content?.trim();
+        if (!raw) return message.reply('nothing came out');
 
-        result = result.replace(/^["""'']|["""'']$/g, '').trim();
+        let report;
+        try {
+            // Strip markdown code fences if model wraps it
+            const cleaned = raw.replace(/^```(?:json)?\n?|\n?```$/g, '').trim();
+            report = JSON.parse(cleaned);
+        } catch (e) {
+            // Fallback: just dump the raw text into the embed
+            const embed = new EmbedBuilder()
+                .setTitle(`Psychological Profile — ${displayName}`)
+                .setDescription(raw)
+                .setColor('#1a1a2e')
+                .setFooter({ text: 'not a real diagnosis. probably.' });
+            return message.reply({ embeds: [embed] });
+        }
 
-        // Format it like an actual report card
+        const symptoms = Array.isArray(report.symptoms)
+            ? report.symptoms.map(s => `- ${s}`).join('\n')
+            : String(report.symptoms);
+
         const isSelf = target.id === message.author.id;
-        const header = isSelf
-            ? `**Psychological Profile — ${displayName}** *(self-referred)*`
-            : `**Psychological Profile — ${displayName}** *(referred by ${message.member?.displayName || message.author.username})*`;
+        const referredBy = isSelf
+            ? 'self-referred'
+            : `referred by ${message.member?.displayName || message.author.username}`;
 
-        return message.reply(`${header}\n\n${result}`);
+        const embed = new EmbedBuilder()
+            .setTitle(`Psychological Profile — ${displayName}`)
+            .setColor('#1a1a2e')
+            .setThumbnail(target.displayAvatarURL({ dynamic: true }))
+            .addFields(
+                { name: 'Diagnosis', value: report.diagnosis || 'Unknown', inline: false },
+                { name: 'Summary', value: report.summary || 'N/A', inline: false },
+                { name: 'Symptoms', value: symptoms || 'none detected', inline: false },
+                { name: 'Prognosis', value: report.prognosis || 'grim', inline: false }
+            )
+            .setFooter({ text: referredBy });
+
+        return message.reply({ embeds: [embed] });
 
     } catch (err) {
         console.error('[Psychoanalyze] Error:', err);
