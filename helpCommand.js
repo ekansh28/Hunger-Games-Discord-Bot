@@ -25,7 +25,7 @@ async function handleHelpCommand(message) {
             .setTitle('🦠 Custom Viruses')
             .setColor('#FFD700')
             .addFields(
-                { name: 'Create & Manage', value: '`=virus create <Name> <Color>` -- Create a new virus\n`=virus rename <Name>`\n`=virus color <Color>`\n`=virus icon <Emoji>`' },
+                { name: 'Create & Manage', value: '`=virus create <Name> <Color>` -- Create a new virus\n`=virus rename <Name>`\n`=virus color <Color>`\n`=virus icon <Emoji>`\n`=virus delete` -- Eradicate your virus' },
                 { name: 'Spread & Cure', value: '`=infect` -- Infect yourself\n`=cure [@user|all]` -- Cure a user\n`.bump` -- Cure yourself\n**Spreading:** Ping/Reply to others to infect them with your virus!' },
                 { name: 'Stats', value: '`=virus top` -- Deadliest viruses leaderboard\n`=infectioninfo` -- Outbreak stats\n`=infectiontree` -- Lineage tree' }
             ),

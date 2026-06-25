@@ -310,7 +310,7 @@ Reply STRICTLY with a valid JSON object matching this schema:
             console.error('[AiChat] API Error:', response?.status, response?.statusText, errorBody);
             
             if (response?.status === 429) {
-                return message.reply("i am rate limited becuase using a free model wait a few seconds or whatever");
+                return; // Fail silently on rate limits to prevent spam during games
             }
 
             if (response?.status === 403) {

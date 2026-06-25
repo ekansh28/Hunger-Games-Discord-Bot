@@ -171,15 +171,15 @@ async function markCured(guildId, userId) {
 // ─────────────────────────────────────────────────────────────
 //  Infect / cure
 // ─────────────────────────────────────────────────────────────
-async function applyInfection(member, infectedBy = null) {
+async function applyInfection(member, infectedBy = null, forceVirusId = null) {
     const { id: guildId } = member.guild;
     const { id: userId } = member.user;
     if (isInfected(guildId, userId)) return false;
     if (isImmune(member)) return false;
 
     // Determine which virus to pass on
-    let virusIdToPass = null;
-    if (infectedBy && data[guildId] && data[guildId][infectedBy]) {
+    let virusIdToPass = forceVirusId;
+    if (!virusIdToPass && infectedBy && data[guildId] && data[guildId][infectedBy]) {
         virusIdToPass = data[guildId][infectedBy].virusId;
     }
 
@@ -192,8 +192,15 @@ async function applyInfection(member, infectedBy = null) {
 
     // Attempt to assign the custom virus role, or the global AIDS_ROLE_ID if no custom virus exists
     try {
-        const targetRoleId = virusIdToPass || AIDS_ROLE_ID;
-        const role = member.guild.roles.cache.get(targetRoleId);
+        let targetRoleId = virusIdToPass || AIDS_ROLE_ID;
+        let role = member.guild.roles.cache.get(targetRoleId);
+        
+        // If the custom role was deleted from Discord, fallback to the generic role
+        if (!role && targetRoleId !== AIDS_ROLE_ID) {
+            targetRoleId = AIDS_ROLE_ID;
+            role = member.guild.roles.cache.get(targetRoleId);
+        }
+
         if (role) {
             const bot = member.guild.members.me;
             if (bot.permissions.has(PermissionsBitField.Flags.ManageRoles) &&
@@ -740,7 +747,7 @@ async function handleVirusCommand(message) {
     const guild = message.guild;
 
     if (!cmd) {
-        return message.channel.send('<@' + message.author.id + '> Usage: `=virus create <Name> <Color>` or `=virus top` or `=virus rename/color/icon`');
+        return message.channel.send('<@' + message.author.id + '> Usage: `=virus create <Name> <Color>` or `=virus top` or `=virus rename/color/icon/delete`');
     }
 
     if (cmd === 'create') {
@@ -935,6 +942,26 @@ async function handleVirusCommand(message) {
             return message.channel.send(`<@${message.author.id}> Failed to change the role icon. Discord API Error: ${err.message || 'Unknown Error'}. Note: Custom discord emojis are now supported natively, but if using a raw URL make sure it points directly to an image file.`);
         }
     }
+
+    if (cmd === 'delete' || cmd === 'eradicate') {
+        if (!myVirusId) return message.channel.send('<@' + message.author.id + '> You do not own any viruses.');
+        const myRole = guild.roles.cache.get(myVirusId);
+        
+        try {
+            if (myRole) {
+                await myRole.delete(`Virus eradicated by owner ${message.author.username}`);
+            }
+        } catch (err) {
+            console.error('[AIDS] Failed to delete role on discord:', err);
+            // Proceed to delete it from DB even if Discord deletion fails
+        }
+
+        delete viruses[guild.id][myVirusId];
+        await pool.query('DELETE FROM custom_viruses WHERE role_id = $1 AND guild_id = $2', [myVirusId, guild.id])
+            .catch(e => console.error('[AIDS] DB Error delete virus:', e));
+            
+        return message.channel.send(`☠️ <@${message.author.id}> Your custom virus has been successfully eradicated!`);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -996,7 +1023,12 @@ async function handleMessage(message) {
     // ── =infect ───────────────────────────────────────────────
     if (command === 'infect') {
         const member = message.member;
-        const result = await applyInfection(member);
+        let myVirusId = null;
+        if (viruses[message.guild.id]) {
+            myVirusId = Object.keys(viruses[message.guild.id]).find(vid => viruses[message.guild.id][vid].ownerId === member.id);
+        }
+        
+        const result = await applyInfection(member, null, myVirusId);
         if (result) {
             await message.channel.send(`${member} HAS BEEN INFECTED. The AIDS spreads.`);
         } else if (isInfected(message.guild.id, member.id)) {

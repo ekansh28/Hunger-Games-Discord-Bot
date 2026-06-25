@@ -10,7 +10,7 @@ const Infection = require('./infection');
 const Stats = require('./stats');
 const LastFm = require('./utils/lastfm');
 const path = require('path');
-const { handleGeoGuesser, handleGgLeaderboard, populateCache } = require('./geoguesser');
+const { handleGeoGuesser, handleGgLeaderboard, handleGgSettings, populateCache } = require('./geoguesser');
 const { handleAiChat } = require('./aiChat');
 const CommandManager = require('./utils/commandManager');
 
@@ -520,6 +520,12 @@ IMPORTANT: You MUST wrap every artist name you mention in **double asterisks** t
     // ── =ggleaderboard ────────────────────────────────────────────────────────
     if (contentLower === '=ggleaderboard' || contentLower === '=gglb') {
         await handleGgLeaderboard(message);
+        return;
+    }
+
+    // ── =gs ───────────────────────────────────────────────────────────────────
+    if (contentLower === '=gs' || contentLower === '=ggsettings') {
+        await handleGgSettings(message);
         return;
     }
 
