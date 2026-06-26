@@ -14,7 +14,7 @@ const { handleGeoGuesser, handleGgLeaderboard, handleGgSettings, populateCache }
 const { handleAiChat } = require('./aiChat');
 const { handleImpersonate } = require('./impersonate');
 const { handlePsychoanalyze } = require('./psychoanalyze');
-const { handleEditCommand } = require('./imageEditor');
+// Removed imageEditor import
 const CommandManager = require('./utils/commandManager');
 
 const HG_ELIM_ROLE_ID = '1486781924671492266';
@@ -629,7 +629,9 @@ IMPORTANT: You MUST wrap every artist name you mention in **double asterisks** t
     }
 
     // ── =edit ───────────────────────────────────────────────────────────────
-    if (contentLower.startsWith('=edit')) {
+    if (contentLower.startsWith('=edit') && !contentLower.startsWith('=edit ')) {
+        // Just standard =edit (which is handled above but we can leave this here or remove it)
+        const { handleEditCommand } = require('./editImage');
         await handleEditCommand(message);
         return;
     }

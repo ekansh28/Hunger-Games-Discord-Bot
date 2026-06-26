@@ -27,6 +27,7 @@
     "@google/generative-ai": "^0.24.1",
     "@gradio/client": "^2.3.0",
     "@neondatabase/serverless": "^0.9.4",
+    "ai": "^7.0.2",
     "canvas": "^3.2.3",
     "discord.js": "^14.26.4",
     "distube": "^5.0.3",
