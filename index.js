@@ -158,7 +158,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
             }
         }
     }
-    }
 });
 
 // ==========================================
