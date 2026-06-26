@@ -63,7 +63,7 @@ async function handleEditCommand(message) {
             const encodedPrompt = encodeURIComponent(prompt);
             const encodedImage = encodeURIComponent(imageUrl);
             
-            let url = `https://gen.pollinations.ai/image/${encodedPrompt}?model=seedream-pro&image=${encodedImage}`;
+            let url = `https://gen.pollinations.ai/image/${encodedPrompt}?model=flux&image=${encodedImage}`;
             
             const polliKey = process.env.POLLINATIONS_API_KEY;
             
