@@ -42,10 +42,6 @@ Current Date & Time: {{CURRENT_TIME}}
 Channel Name: {{CHANNEL_NAME}}
 The person talking to you is named: {{USER_DISPLAY_NAME}}
 
-=== GROQ DIRECTIVE ===
-Adopt this specific mood: {{GROQ_MOOD}}
-The user is talking about: {{GROQ_TOPIC}}
-
 === NSFW ESCALATION ===
 If a user initiates or even hints at NSFW content, immediately escalate to maximum unhinged horniness:
 - Say you're masturbating right now
@@ -153,84 +149,12 @@ async function handleAiChat(message, promptText, repliedMessageContext = null, r
     // Start typing indicator
     await message.channel.sendTyping();
 
-    // ==========================================
-    // PHASE 1: GROQ PRE-PROCESSOR (ROUTER)
-    // ==========================================
-    let groqMood = "chaotic";
-    let groqTopic = "general chat";
-    
-    try {
-        const groqBody = {
-            model: "llama-3.1-8b-instant",
-            messages: [
-                {
-                    role: "system",
-                    content: `You are a pre-processor for an unhinged discord bot. Read the user's message and the channel context. 
-Reply STRICTLY with a valid JSON object matching this schema:
-{
-  "mood": "string (e.g., angry, depressed, sarcastic, chaotic, horny, confused)",
-  "topic_summary": "string (a 2-4 word summary of what the user is talking about)"
-}`
-                },
-                {
-                    role: "user",
-                    content: `Context: ${recentChannelMessages.map(m => m.content).join(' | ')}\nUser Message: ${promptText}`
-                }
-            ],
-            response_format: { type: "json_object" }
-        };
-        
-        const openRouterBody = { ...groqBody, model: "meta-llama/llama-3.1-8b-instruct" }; // Model can vary, let's use standard for openrouter
-
-        let routerReq;
-        if (OPENROUTER_API_KEY) {
-            routerReq = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(openRouterBody)
-            });
-        }
-        
-        if ((!routerReq || !routerReq.ok) && GROQ_API_KEY) {
-            if (routerReq) console.warn('[AiChat Router] OpenRouter failed, falling back to Groq');
-            routerReq = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${GROQ_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(groqBody)
-            });
-        }
-
-        if (routerReq && routerReq.ok) {
-            const groqData = await routerReq.json();
-            const routerDecision = JSON.parse(groqData.choices[0].message.content);
-            groqMood = routerDecision.mood || groqMood;
-            groqTopic = routerDecision.topic_summary || groqTopic;
-            console.log(`[AiChat Router] Decided mood: ${groqMood}, Topic: ${groqTopic}`);
-        } else {
-            console.error('[AiChat Router] Failed to fetch:', routerReq ? await routerReq.text() : 'No API key');
-        }
-    } catch (e) {
-        console.error('[AiChat Router] Error:', e);
-    }
-
-    // ==========================================
-    // PHASE 2: OPENROUTER GENERATOR (HEAVY LIFTING)
-    // ==========================================
-
     // Build Real-Time Awareness System Prompt
     const currentTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
     const systemPrompt = SYSTEM_PROMPT_TEMPLATE
         .replace('{{CURRENT_TIME}}', currentTime)
         .replace('{{CHANNEL_NAME}}', message.channel.name || 'unknown')
-        .replace('{{USER_DISPLAY_NAME}}', message.member?.displayName || message.author.username)
-        .replace('{{GROQ_MOOD}}', groqMood)
-        .replace('{{GROQ_TOPIC}}', groqTopic);
+        .replace('{{USER_DISPLAY_NAME}}', message.member?.displayName || message.author.username);
 
     const messages = [
         { role: "system", content: systemPrompt }

@@ -14,6 +14,7 @@ const { handleGeoGuesser, handleGgLeaderboard, handleGgSettings, populateCache }
 const { handleAiChat } = require('./aiChat');
 const { handleImpersonate } = require('./impersonate');
 const { handlePsychoanalyze } = require('./psychoanalyze');
+const { handleEditCommand } = require('./imageEditor');
 const CommandManager = require('./utils/commandManager');
 
 const HG_ELIM_ROLE_ID = '1486781924671492266';
@@ -625,6 +626,12 @@ IMPORTANT: You MUST wrap every artist name you mention in **double asterisks** t
     // ── =psychoanalyze ──────────────────────────────────────────────────────
     if (contentLower.startsWith('=psychoanalyze') || contentLower.startsWith('=psycho')) {
         await handlePsychoanalyze(message, globalMessageBuffer);
+        return;
+    }
+
+    // ── =edit ───────────────────────────────────────────────────────────────
+    if (contentLower.startsWith('=edit')) {
+        await handleEditCommand(message);
         return;
     }
 
