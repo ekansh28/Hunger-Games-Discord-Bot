@@ -48,7 +48,7 @@ async function callAI(payload) {
     return result.replace(/^[""'']|[""'']$/g, '').trim();
 }
 
-async function handleImpersonate(message) {
+async function handleImpersonate(message, globalMessageBuffer) {
     const target = message.mentions.users.first();
     if (!target) return message.reply('mention someone to impersonate.');
     if (target.bot) return message.reply('not impersonating a bot lmao');
@@ -67,8 +67,13 @@ async function handleImpersonate(message) {
         if (globalMessageBuffer && globalMessageBuffer.length > 0) {
             recentMessages = globalMessageBuffer
                 .filter(m => m.authorId === target.id && m.content && m.content.length > 1 && !m.content.startsWith('='))
-                .slice(0, 50)
-                .map(m => m.content);
+                .slice(-50)
+                .map(m => {
+                    let text = `[${new Date(m.timestamp).toLocaleTimeString()}] `;
+                    if (m.replyContext) text += `(Replying to: "${m.replyContext}") -> `;
+                    text += `"${m.content}"`;
+                    return text;
+                });
         }
     } catch (e) {
         console.error('[Impersonate] Failed to read from buffer:', e);
@@ -85,9 +90,14 @@ async function handleImpersonate(message) {
 
     const systemPrompt = `You are mimicking a specific Discord user named "${displayName}".
 Study their writing style, vocabulary, humor, tone, and quirks from their recent messages.
+Notice when they talk, who they reply to, and how they react.
 Generate EXACTLY 2 separate short messages they might send in a row, like a real Discord conversation.
-Format your response as two lines, each line being one message. Nothing else — no labels, no quotes, no explanations.
-Keep each message short and casual, 1 sentence max. Do NOT start either message with their name.`;
+Format your response as exactly two lines. Nothing else — no labels, no quotes, no explanations.
+Do NOT start either message with their name. Keep them short.
+
+EXAMPLE OUTPUT:
+bro i swear my internet is so bad rn
+literally getting 500 ping on valorant`;
 
     const userPrompt = `Here are ${displayName}'s recent messages:\n${sampleText}\n\nNow write 2 messages as ${displayName}, one per line:`;
 
@@ -99,8 +109,10 @@ Keep each message short and casual, 1 sentence max. Do NOT start either message 
             { role: 'user', content: userPrompt }
         ],
         max_tokens: 150,
-        temperature: 1.0,
-        top_p: 0.95
+        temperature: 1.1,
+        top_p: 0.95,
+        frequency_penalty: 0.6,
+        presence_penalty: 0.6
     };
 
     try {
@@ -108,11 +120,16 @@ Keep each message short and casual, 1 sentence max. Do NOT start either message 
         if (!raw) return message.reply('failed lol');
 
         // Split on newlines, filter empty lines, take up to 3
-        const msgs = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0).slice(0, 3);
+        let msgs = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0).slice(0, 3);
         if (msgs.length === 0) return message.reply('nothing came out');
 
-        // Ensure at least 2 — if model only gave 1, duplicate with slight variation
-        if (msgs.length === 1) msgs.push(msgs[0]);
+        // If it still only generated one big line, try to split it by punctuation
+        if (msgs.length === 1 && msgs[0].length > 40) {
+            const splitAttempt = msgs[0].split(/(?<=[.?!])\s+/);
+            if (splitAttempt.length > 1) {
+                msgs = splitAttempt;
+            }
+        }
 
         // Send as webhook
         try {
